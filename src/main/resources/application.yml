@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: url-shortener
+
+  # 1. PostgreSQL Datasource
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/url_shortener
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  # 2. JPA & Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: validate # Database schema is initialized via SQL scripts, JPA only validates compatibility
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  # 3. Redis Cache & Sequence Gen
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+
+  # 4. Kafka Broker Config
+  kafka:
+    bootstrap-servers: ${KAFKA_HOST:localhost}:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: url-analytics-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring:
+          json:
+            trusted:
+              packages: "com.shortener.dto,com.shortener.entity,java.util,java.time"
+
+# 5. Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.shortener: INFO
+    org.springframework.cache: WARN

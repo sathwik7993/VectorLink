@@ -1,0 +1,30 @@
+# Maven build artifacts
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Eclipse IDE
+.classpath
+.project
+.settings/
+*.launch
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+out/
+
+# VS Code
+.vscode/
+
+# Operating System files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Log files
+*.log
