@@ -1,0 +1,23 @@
+# Build artifacts
+target/
+
+# Version control
+.git/
+.gitignore
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Documentation
+*.md
+
+# Deployment configs (not needed inside the image)
+docker-compose.yml
+fly.toml
+render.yaml
+
+# OS files
+.DS_Store
+Thumbs.db

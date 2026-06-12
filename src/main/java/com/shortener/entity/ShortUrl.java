@@ -16,6 +16,15 @@ public class ShortUrl {
     @Column(name = "long_url", nullable = false, columnDefinition = "TEXT")
     private String longUrl;
 
+    @Column(name = "custom_alias", unique = true, length = 30)
+    private String customAlias;
+
+    @Column(name = "is_active", nullable = false)
+    private boolean active = true;
+
+    @Column(name = "click_count", nullable = false)
+    private long clickCount = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -26,10 +35,14 @@ public class ShortUrl {
         this.createdAt = Instant.now();
     }
 
-    public ShortUrl(Long id, String shortCode, String longUrl, Instant createdAt, Instant expiresAt) {
+    public ShortUrl(Long id, String shortCode, String longUrl, String customAlias,
+                    boolean active, long clickCount, Instant createdAt, Instant expiresAt) {
         this.id = id;
         this.shortCode = shortCode;
         this.longUrl = longUrl;
+        this.customAlias = customAlias;
+        this.active = active;
+        this.clickCount = clickCount;
         this.createdAt = createdAt != null ? createdAt : Instant.now();
         this.expiresAt = expiresAt;
     }
@@ -62,6 +75,30 @@ public class ShortUrl {
         this.longUrl = longUrl;
     }
 
+    public String getCustomAlias() {
+        return customAlias;
+    }
+
+    public void setCustomAlias(String customAlias) {
+        this.customAlias = customAlias;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    public long getClickCount() {
+        return clickCount;
+    }
+
+    public void setClickCount(long clickCount) {
+        this.clickCount = clickCount;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -86,6 +123,9 @@ public class ShortUrl {
         private Long id;
         private String shortCode;
         private String longUrl;
+        private String customAlias;
+        private boolean active = true;
+        private long clickCount = 0;
         private Instant createdAt;
         private Instant expiresAt;
 
@@ -104,6 +144,21 @@ public class ShortUrl {
             return this;
         }
 
+        public Builder customAlias(String customAlias) {
+            this.customAlias = customAlias;
+            return this;
+        }
+
+        public Builder active(boolean active) {
+            this.active = active;
+            return this;
+        }
+
+        public Builder clickCount(long clickCount) {
+            this.clickCount = clickCount;
+            return this;
+        }
+
         public Builder createdAt(Instant createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -115,7 +170,7 @@ public class ShortUrl {
         }
 
         public ShortUrl build() {
-            return new ShortUrl(id, shortCode, longUrl, createdAt, expiresAt);
+            return new ShortUrl(id, shortCode, longUrl, customAlias, active, clickCount, createdAt, expiresAt);
         }
     }
 }

@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 public class UrlController {
 
@@ -31,9 +33,36 @@ public class UrlController {
     }
 
     /**
+     * Endpoint to list all shortened URLs ordered by creation date (newest first).
+     */
+    @GetMapping("/api/v1/urls")
+    public ResponseEntity<List<UrlResponse>> listAllUrls() {
+        List<UrlResponse> urls = urlShortenerService.listAllUrls();
+        return ResponseEntity.ok(urls);
+    }
+
+    /**
+     * Endpoint to delete a shortened URL by its short code.
+     */
+    @DeleteMapping("/api/v1/urls/{shortCode}")
+    public ResponseEntity<Void> deleteUrl(@PathVariable String shortCode) {
+        urlShortenerService.deleteUrl(shortCode);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Endpoint to toggle active/inactive state of a shortened URL.
+     */
+    @PatchMapping("/api/v1/urls/{shortCode}/toggle")
+    public ResponseEntity<UrlResponse> toggleUrlActive(@PathVariable String shortCode) {
+        UrlResponse response = urlShortenerService.toggleUrlActive(shortCode);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Endpoint to redirect from a short code to the target long URL.
      */
-    @GetMapping("/{shortCode}")
+    @GetMapping("/{shortCode:[a-zA-Z0-9\\-]{3,30}}")
     public ResponseEntity<Void> redirect(@PathVariable String shortCode, HttpServletRequest request) {
         // 1. Resolve redirect destination (Fast layer: L1/L2 caches, Fallback: Postgres with mutex)
         String longUrl = urlShortenerService.resolveUrl(shortCode);

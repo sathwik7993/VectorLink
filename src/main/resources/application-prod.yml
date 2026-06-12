@@ -1,0 +1,65 @@
+# =============================================================================
+# VectorLink — Production Profile
+# Activated via: SPRING_PROFILES_ACTIVE=prod
+# =============================================================================
+
+spring:
+  # Disable Kafka — not available on free-tier cloud platforms.
+  # Analytics events will be processed synchronously instead.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+  # PostgreSQL — all values injected from platform environment variables
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:vectorlink}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  # JPA — validate only; schema managed by migration scripts
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+
+# Logging — keep production logs lean
+logging:
+  level:
+    root: WARN
+    com.shortener: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+
+# Server tuning
+server:
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/plain
+    min-response-size: 1024
+  max-http-header-size: 16KB
+
+# Actuator — expose health, info, metrics for platform monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics — VectorLink</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- ===== Navbar ===== -->
+  <nav class="navbar" id="navbar">
+    <div class="container">
+      <a href="index.html" class="nav-logo">
+        <span class="logo-icon">⚡</span>
+        <span>VectorLink</span>
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">☰</button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="https://github.com" target="_blank" rel="noopener">GitHub ↗</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Page Header -->
+    <div class="page-header">
+      <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+      <div class="analytics-header">
+        <div class="analytics-url-info">
+          <h2 id="analyticsTitle">Loading…</h2>
+          <div class="long-url" id="analyticsLongUrl"></div>
+        </div>
+        <div>
+          <span class="badge badge-active" id="analyticsBadge" style="display:none;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="analytics-stats-grid mb-8" id="statsRow">
+      <div class="glass-card-static analytics-stat-card">
+        <div class="stat-value text-gradient" id="statTotalClicks">0</div>
+        <div class="stat-label">Total Clicks</div>
+      </div>
+      <div class="glass-card-static analytics-stat-card">
+        <div class="stat-value" id="statDesktop" style="color: var(--accent);">0%</div>
+        <div class="stat-label">Desktop</div>
+      </div>
+      <div class="glass-card-static analytics-stat-card">
+        <div class="stat-value" id="statMobile" style="color: var(--success);">0%</div>
+        <div class="stat-label">Mobile</div>
+      </div>
+      <div class="glass-card-static analytics-stat-card">
+        <div class="stat-value" id="statTablet" style="color: var(--warning);">0%</div>
+        <div class="stat-label">Tablet</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-grid">
+      <div class="glass-card-static chart-container">
+        <h3>Clicks Over Time</h3>
+        <div class="chart-canvas-wrapper">
+          <canvas id="clicksChart"></canvas>
+        </div>
+      </div>
+      <div class="glass-card-static chart-container">
+        <h3>Device Breakdown</h3>
+        <div class="chart-canvas-wrapper" style="max-width: 280px; margin: 0 auto;">
+          <canvas id="deviceChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="page-loader hidden" id="pageLoader">
+      <div class="loader-spinner"></div>
+      <p>Loading analytics…</p>
+    </div>
+
+    <!-- No Data State -->
+    <div class="empty-state hidden" id="emptyState">
+      <div class="empty-state-icon">📊</div>
+      <h3>No analytics data yet</h3>
+      <p>Once people start clicking your link, analytics will appear here.</p>
+      <a href="dashboard.html" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer" style="margin-top: var(--space-16);">
+    <div class="container">
+      <div class="footer-content">
+        <p>© 2026 VectorLink. Built with Spring Boot, Redis, Kafka & PostgreSQL.</p>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="js/analytics.js"></script>
+</body>
+</html>

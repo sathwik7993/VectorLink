@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — VectorLink</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- ===== Navbar ===== -->
+  <nav class="navbar" id="navbar">
+    <div class="container">
+      <a href="index.html" class="nav-logo">
+        <span class="logo-icon">⚡</span>
+        <span>VectorLink</span>
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">☰</button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="dashboard.html" class="active">Dashboard</a></li>
+        <li><a href="https://github.com" target="_blank" rel="noopener">GitHub ↗</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Page Header -->
+    <div class="page-header">
+      <h1>Your <span class="text-gradient">Links</span></h1>
+      <p>Manage, monitor, and control all your shortened URLs in one place.</p>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="summary-stats" id="summaryStats">
+      <div class="summary-stat-card">
+        <div class="stat-icon purple">🔗</div>
+        <div class="stat-value" id="statTotalLinks">—</div>
+        <div class="stat-desc">Total Links</div>
+      </div>
+      <div class="summary-stat-card">
+        <div class="stat-icon blue">👆</div>
+        <div class="stat-value" id="statTotalClicks">—</div>
+        <div class="stat-desc">Total Clicks</div>
+      </div>
+      <div class="summary-stat-card">
+        <div class="stat-icon green">✅</div>
+        <div class="stat-value" id="statActiveLinks">—</div>
+        <div class="stat-desc">Active Links</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="input-group search-input">
+        <input 
+          type="text" 
+          class="input has-icon" 
+          id="searchInput" 
+          placeholder="Search links…"
+        >
+        <span class="input-icon">🔍</span>
+      </div>
+      <a href="index.html" class="btn btn-primary btn-sm">+ New Link</a>
+    </div>
+
+    <!-- URL List -->
+    <div id="urlList" class="url-list">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Loading State -->
+    <div class="page-loader" id="pageLoader">
+      <div class="loader-spinner"></div>
+      <p>Loading your links…</p>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state hidden" id="emptyState">
+      <div class="empty-state-icon">🔗</div>
+      <h3>No links yet</h3>
+      <p>Create your first shortened URL and it will appear here.</p>
+      <a href="index.html" class="btn btn-primary">Create Your First Link</a>
+    </div>
+
+    <!-- No Results State -->
+    <div class="empty-state hidden" id="noResults">
+      <div class="empty-state-icon">🔍</div>
+      <h3>No matches found</h3>
+      <p>Try adjusting your search query.</p>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer" style="margin-top: var(--space-16);">
+    <div class="container">
+      <div class="footer-content">
+        <p>© 2026 VectorLink. Built with Spring Boot, Redis, Kafka & PostgreSQL.</p>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Modal Container -->
+  <div id="modalContainer"></div>
+
+  <script src="js/dashboard.js"></script>
+</body>
+</html>
