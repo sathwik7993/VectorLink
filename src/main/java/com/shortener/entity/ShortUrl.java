@@ -31,12 +31,19 @@ public class ShortUrl {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @Column(name = "password_hash", length = 255)
+    private String passwordHash;
+
+    @Column(name = "fallback_url", columnDefinition = "TEXT")
+    private String fallbackUrl;
+
     public ShortUrl() {
         this.createdAt = Instant.now();
     }
 
     public ShortUrl(Long id, String shortCode, String longUrl, String customAlias,
-                    boolean active, long clickCount, Instant createdAt, Instant expiresAt) {
+                    boolean active, long clickCount, Instant createdAt, Instant expiresAt,
+                    String passwordHash, String fallbackUrl) {
         this.id = id;
         this.shortCode = shortCode;
         this.longUrl = longUrl;
@@ -45,6 +52,8 @@ public class ShortUrl {
         this.clickCount = clickCount;
         this.createdAt = createdAt != null ? createdAt : Instant.now();
         this.expiresAt = expiresAt;
+        this.passwordHash = passwordHash;
+        this.fallbackUrl = fallbackUrl;
     }
 
     public boolean isExpired() {
@@ -115,6 +124,22 @@ public class ShortUrl {
         this.expiresAt = expiresAt;
     }
 
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public String getFallbackUrl() {
+        return fallbackUrl;
+    }
+
+    public void setFallbackUrl(String fallbackUrl) {
+        this.fallbackUrl = fallbackUrl;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -128,6 +153,8 @@ public class ShortUrl {
         private long clickCount = 0;
         private Instant createdAt;
         private Instant expiresAt;
+        private String passwordHash;
+        private String fallbackUrl;
 
         public Builder id(Long id) {
             this.id = id;
@@ -169,8 +196,18 @@ public class ShortUrl {
             return this;
         }
 
+        public Builder passwordHash(String passwordHash) {
+            this.passwordHash = passwordHash;
+            return this;
+        }
+
+        public Builder fallbackUrl(String fallbackUrl) {
+            this.fallbackUrl = fallbackUrl;
+            return this;
+        }
+
         public ShortUrl build() {
-            return new ShortUrl(id, shortCode, longUrl, customAlias, active, clickCount, createdAt, expiresAt);
+            return new ShortUrl(id, shortCode, longUrl, customAlias, active, clickCount, createdAt, expiresAt, passwordHash, fallbackUrl);
         }
     }
 }

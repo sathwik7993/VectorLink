@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VectorLink — Shorten. Track. Optimize.</title>
+  <meta name="description" content="Enterprise-grade URL shortener with real-time analytics, sub-5ms redirects, and full device-level insights. Powered by Redis, Kafka, and PostgreSQL.">
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 </head>
@@ -16,11 +17,13 @@
         <span class="logo-icon">⚡</span>
         <span>VectorLink</span>
       </a>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">☰</button>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
       <ul class="nav-links" id="navLinks">
         <li><a href="index.html" class="active">Home</a></li>
         <li><a href="dashboard.html">Dashboard</a></li>
-        <li><a href="https://github.com" target="_blank" rel="noopener">GitHub ↗</a></li>
+        <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
       </ul>
     </div>
   </nav>
@@ -55,7 +58,9 @@
               placeholder="Paste your long URL here…" 
               required
             >
-            <span class="input-icon">🔗</span>
+            <span class="input-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
           </div>
           <button type="submit" class="btn btn-primary" id="submitBtn">
             <span id="submitText">Shorten</span>
@@ -73,14 +78,52 @@
               title="Letters, numbers, hyphens, underscores only"
             >
           </div>
-          <div class="input-group" style="max-width:200px;">
+          <div class="input-group expiry-group" style="max-width:280px;">
             <select class="select" id="ttlSelect">
               <option value="3600">Expires in 1 hour</option>
               <option value="86400">Expires in 1 day</option>
               <option value="604800" selected>Expires in 7 days</option>
               <option value="2592000">Expires in 30 days</option>
               <option value="31536000">Expires in 1 year</option>
+              <option value="custom">Custom date & time</option>
             </select>
+          </div>
+          <div class="input-group hidden" id="customExpiryGroup" style="max-width:250px;">
+            <input 
+              type="datetime-local" 
+              class="input" 
+              id="customExpiryInput"
+            >
+          </div>
+          <button type="button" class="btn btn-secondary toggle-btn" id="advancedToggleBtn" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Advanced
+          </button>
+        </div>
+        
+        <!-- Advanced Options Section -->
+        <div class="advanced-options-section hidden" id="advancedOptionsSection" style="margin-top: var(--space-4); display: flex; gap: var(--space-3); flex-wrap: wrap;">
+          <div class="input-group" style="flex: 1; min-width: 250px;">
+            <input 
+              type="url" 
+              class="input has-icon" 
+              id="fallbackUrlInput" 
+              placeholder="Fallback URL (Optional)"
+            >
+            <span class="input-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+            </span>
+          </div>
+          <div class="input-group" style="flex: 1; min-width: 200px;">
+            <input 
+              type="password" 
+              class="input has-icon" 
+              id="passwordInput" 
+              placeholder="Password (Optional)"
+            >
+            <span class="input-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
           </div>
         </div>
       </form>
@@ -92,7 +135,10 @@
             <div class="result-label">Your shortened link</div>
             <div class="result-short-url">
               <a href="#" id="resultShortUrl" target="_blank" rel="noopener"></a>
-              <button class="btn btn-sm btn-secondary" id="copyBtn" title="Copy to clipboard">📋 Copy</button>
+              <button class="btn btn-sm btn-secondary" id="copyBtn" title="Copy to clipboard">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
             </div>
             <div class="result-long-url" id="resultLongUrl"></div>
             <div class="result-meta">
@@ -117,17 +163,23 @@
       </div>
       <div class="features-grid stagger">
         <div class="glass-card feature-card animate-slide-up" style="opacity:0;">
-          <div class="feature-icon">⚡</div>
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
           <h3>Blazing Fast Redirects</h3>
           <p>Redis-cached lookups deliver sub-5ms P99 redirect latency. Your users never wait.</p>
         </div>
         <div class="glass-card feature-card animate-slide-up" style="opacity:0;">
-          <div class="feature-icon">📊</div>
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          </div>
           <h3>Real-time Analytics</h3>
           <p>Kafka-powered click stream processing with device detection, daily aggregation, and trend visualization.</p>
         </div>
         <div class="glass-card feature-card animate-slide-up" style="opacity:0;">
-          <div class="feature-icon">📱</div>
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><path d="M14 14h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2z"/></svg>
+          </div>
           <h3>QR Code Generation</h3>
           <p>Instant QR codes for every link. Perfect for print media, presentations, and offline campaigns.</p>
         </div>
@@ -159,7 +211,7 @@
   <footer class="footer">
     <div class="container">
       <div class="footer-content">
-        <p>© 2026 VectorLink. Built with Spring Boot, Redis, Kafka & PostgreSQL.</p>
+        <p>© 2026 VectorLink. Built with Spring Boot, Redis, Kafka &amp; PostgreSQL.</p>
         <ul class="footer-links">
           <li><a href="dashboard.html">Dashboard</a></li>
           <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>

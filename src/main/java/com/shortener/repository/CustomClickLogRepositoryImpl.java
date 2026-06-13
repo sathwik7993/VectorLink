@@ -23,8 +23,8 @@ public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
             return;
         }
 
-        String sql = "INSERT INTO click_logs (short_code, clicked_at, referrer, user_agent, ip_address, country_code, device_type, event_id) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+        String sql = "INSERT INTO click_logs (short_code, clicked_at, referrer, user_agent, ip_address, country_code, device_type, event_id, browser, operating_system) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                      "ON CONFLICT (event_id, clicked_at) DO NOTHING";
         
         jdbcTemplate.batchUpdate(sql, clickLogs, clickLogs.size(), (PreparedStatement ps, ClickLog click) -> {
@@ -36,6 +36,8 @@ public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
             ps.setString(6, click.getCountryCode());
             ps.setString(7, click.getDeviceType());
             ps.setString(8, click.getEventId());
+            ps.setString(9, click.getBrowser());
+            ps.setString(10, click.getOperatingSystem());
         });
     }
 }

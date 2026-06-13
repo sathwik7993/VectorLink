@@ -13,6 +13,41 @@
   const submitBtn     = document.getElementById('submitBtn');
   const submitText    = document.getElementById('submitText');
   const submitSpinner = document.getElementById('submitSpinner');
+  const advancedToggleBtn      = document.getElementById('advancedToggleBtn');
+  const advancedOptionsSection = document.getElementById('advancedOptionsSection');
+  const fallbackUrlInput       = document.getElementById('fallbackUrlInput');
+  const passwordInput          = document.getElementById('passwordInput');
+  const customExpiryGroup      = document.getElementById('customExpiryGroup');
+  const customExpiryInput      = document.getElementById('customExpiryInput');
+
+  // ─── Advanced Options Toggle ───
+  if (advancedToggleBtn && advancedOptionsSection) {
+    advancedToggleBtn.addEventListener('click', () => {
+      advancedOptionsSection.classList.toggle('hidden');
+    });
+  }
+
+  // ─── Custom Expiry Toggle ───
+  if (ttlSelect && customExpiryGroup) {
+    // Set default min datetime to now
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    if (customExpiryInput) {
+      customExpiryInput.min = now.toISOString().slice(0, 16);
+      // Default to 7 days from now
+      const defaultDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      defaultDate.setMinutes(defaultDate.getMinutes() - defaultDate.getTimezoneOffset());
+      customExpiryInput.value = defaultDate.toISOString().slice(0, 16);
+    }
+
+    ttlSelect.addEventListener('change', () => {
+      if (ttlSelect.value === 'custom') {
+        customExpiryGroup.classList.remove('hidden');
+      } else {
+        customExpiryGroup.classList.add('hidden');
+      }
+    });
+  }
 
   const resultCard    = document.getElementById('resultCard');
   const resultShortUrl= document.getElementById('resultShortUrl');
@@ -35,24 +70,16 @@
   if (navToggle) {
     navToggle.addEventListener('click', () => {
       navLinks.classList.toggle('open');
-      navToggle.textContent = navLinks.classList.contains('open') ? '✕' : '☰';
     });
   }
 
   // ─── Toast System ───
   function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
-    const icons = {
-      success: '✅',
-      error: '❌',
-      info: 'ℹ️',
-      warning: '⚠️'
-    };
-
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || icons.info}</span>
+      <span class="toast-icon"></span>
       <span class="toast-message">${escapeHtml(message)}</span>
     `;
 
@@ -103,6 +130,23 @@
     });
   }
 
+  // ─── Calculate TTL seconds ───
+  function getTtlSeconds() {
+    if (ttlSelect.value === 'custom') {
+      if (!customExpiryInput || !customExpiryInput.value) {
+        return 604800; // Default 7 days
+      }
+      const expiryDate = new Date(customExpiryInput.value);
+      const now = new Date();
+      const diffSeconds = Math.floor((expiryDate - now) / 1000);
+      if (diffSeconds <= 0) {
+        return null; // Invalid — will be caught in validation
+      }
+      return diffSeconds;
+    }
+    return parseInt(ttlSelect.value, 10);
+  }
+
   // ─── Form Submission ───
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -121,7 +165,21 @@
     }
 
     const customAlias = aliasInput.value.trim() || null;
-    const ttlSeconds = parseInt(ttlSelect.value, 10);
+    const ttlSeconds = getTtlSeconds();
+    const fallbackUrl = fallbackUrlInput ? (fallbackUrlInput.value.trim() || null) : null;
+    const password = passwordInput ? (passwordInput.value || null) : null;
+
+    if (ttlSeconds === null) {
+      showToast('Please select a future date for the expiry.', 'error');
+      if (customExpiryInput) customExpiryInput.focus();
+      return;
+    }
+
+    if (fallbackUrl && !isValidUrl(fallbackUrl)) {
+      showToast('Please enter a valid fallback URL starting with http:// or https://', 'error');
+      fallbackUrlInput.focus();
+      return;
+    }
 
     setLoading(true);
     resultCard.classList.add('hidden');
@@ -133,7 +191,9 @@
         body: JSON.stringify({
           longUrl,
           ttlSeconds,
-          customAlias
+          customAlias,
+          fallbackUrl,
+          password
         })
       });
 
@@ -149,6 +209,9 @@
       // Clear form
       longUrlInput.value = '';
       aliasInput.value = '';
+      if (fallbackUrlInput) fallbackUrlInput.value = '';
+      if (passwordInput) passwordInput.value = '';
+      if (advancedOptionsSection) advancedOptionsSection.classList.add('hidden');
 
     } catch (err) {
       console.error('Shorten error:', err);
@@ -160,10 +223,12 @@
 
   // ─── Display Result ───
   function displayResult(data) {
-    const shortUrl = data.shortUrl || `${window.location.origin}/${data.customAlias || ''}`;
+    // Backend returns shortUrl as just the short code, build full URL
+    const shortCode = data.shortUrl || data.customAlias || '';
+    const fullUrl = `${window.location.origin}/${shortCode}`;
 
-    resultShortUrl.href = shortUrl;
-    resultShortUrl.textContent = shortUrl.replace(/^https?:\/\//, '');
+    resultShortUrl.href = fullUrl;
+    resultShortUrl.textContent = fullUrl.replace(/^https?:\/\//, '');
 
     resultLongUrl.textContent = data.longUrl;
     resultExpiry.innerHTML = `<strong>Expires:</strong> ${formatDate(data.expiresAt)}`;
@@ -179,8 +244,6 @@
     if (data.qrCodeUrl) {
       resultQr.src = data.qrCodeUrl;
     } else {
-      // Derive short code from the URL
-      const shortCode = shortUrl.split('/').pop();
       resultQr.src = `/api/v1/qr/${shortCode}`;
     }
 
@@ -195,10 +258,10 @@
     const url = resultShortUrl.href;
     try {
       await navigator.clipboard.writeText(url);
-      copyBtn.textContent = '✓ Copied!';
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
       showToast('Link copied to clipboard!', 'success');
       setTimeout(() => {
-        copyBtn.innerHTML = '📋 Copy';
+        copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
       }, 2000);
     } catch {
       // Fallback
@@ -208,10 +271,10 @@
       input.select();
       document.execCommand('copy');
       document.body.removeChild(input);
-      copyBtn.textContent = '✓ Copied!';
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
       showToast('Link copied to clipboard!', 'success');
       setTimeout(() => {
-        copyBtn.innerHTML = '📋 Copy';
+        copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
       }, 2000);
     }
   });

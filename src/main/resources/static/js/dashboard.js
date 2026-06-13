@@ -31,18 +31,16 @@
   if (navToggle) {
     navToggle.addEventListener('click', () => {
       navLinks.classList.toggle('open');
-      navToggle.textContent = navLinks.classList.contains('open') ? '✕' : '☰';
     });
   }
 
   // ─── Toast System ───
   function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
-    const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || icons.info}</span>
+      <span class="toast-icon"></span>
       <span class="toast-message">${escapeHtml(message)}</span>
     `;
     container.appendChild(toast);
@@ -79,15 +77,22 @@
     return url.length > maxLen ? url.substring(0, maxLen) + '…' : url;
   }
 
+  // The backend returns just the short code (e.g. "abc123"),
+  // not a full URL. Handle both cases gracefully.
   function extractShortCode(shortUrl) {
     if (!shortUrl) return '';
-    // Try to extract the path after the last /
     try {
       const url = new URL(shortUrl);
       return url.pathname.replace(/^\//, '');
     } catch {
-      return shortUrl.split('/').pop() || shortUrl;
+      // It's already just a short code
+      return shortUrl;
     }
+  }
+
+  // Build the full clickable short URL from a short code
+  function buildFullUrl(shortCode) {
+    return `${window.location.origin}/${shortCode}`;
   }
 
   // ─── Fetch All URLs ───
@@ -123,6 +128,19 @@
     statActiveLinks.textContent = allUrls.filter(u => u.active).length;
   }
 
+  // ─── SVG Icons (inline, no emojis) ───
+  const icons = {
+    copy: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    qr: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><path d="M14 14h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2z"/></svg>',
+    analytics: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>',
+    trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    lock: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    clicks: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    calendar: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    redirect: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>',
+    tag: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>'
+  };
+
   // ─── Render URL Cards ───
   function renderUrls(urls) {
     urlList.innerHTML = '';
@@ -141,40 +159,53 @@
 
     urls.forEach((item, index) => {
       const shortCode = extractShortCode(item.shortUrl);
-      const shortDisplay = item.shortUrl
-        ? item.shortUrl.replace(/^https?:\/\//, '')
-        : shortCode;
+      const fullUrl = buildFullUrl(shortCode);
+      const shortDisplay = fullUrl.replace(/^https?:\/\//, '');
 
       const card = document.createElement('div');
       card.className = 'url-card animate-slide-up';
       card.style.animationDelay = `${index * 0.05}s`;
       card.dataset.shortCode = shortCode;
 
+      const isPasswordProtected = item.passwordProtected || !!item.passwordHash || !!item.password;
+
       card.innerHTML = `
         <div class="url-card-info">
           <div class="url-card-top">
-            <a href="${escapeHtml(item.shortUrl || '/' + shortCode)}" class="url-short" target="_blank" rel="noopener">
+            <a href="${escapeHtml(fullUrl)}" class="url-short" target="_blank" rel="noopener">
               ${escapeHtml(shortDisplay)}
             </a>
             <span class="badge ${item.active ? 'badge-active' : 'badge-inactive'}">
               ${item.active ? 'Active' : 'Inactive'}
             </span>
+            ${isPasswordProtected ? `
+              <span class="badge" style="background: var(--warning-bg); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.2);" title="Password Protected">
+                ${icons.lock} Protected
+              </span>` : ''}
+            ${item.customAlias ? `
+              <span class="badge" style="background: rgba(102,126,234,0.12); color: var(--accent); border: 1px solid rgba(102,126,234,0.2);" title="Custom Alias">
+                ${icons.tag} ${escapeHtml(item.customAlias)}
+              </span>` : ''}
           </div>
           <div class="url-long" title="${escapeHtml(item.longUrl || '')}">${escapeHtml(truncateUrl(item.longUrl))}</div>
+          ${item.fallbackUrl ? `
+            <div class="url-fallback" style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1); display: flex; align-items: center; gap: 4px;" title="Fallback URL: ${escapeHtml(item.fallbackUrl)}">
+              ${icons.redirect} Fallback: <a href="${escapeHtml(item.fallbackUrl)}" target="_blank" rel="noopener" style="color: var(--text-secondary); text-decoration: underline;">${escapeHtml(truncateUrl(item.fallbackUrl, 50))}</a>
+            </div>` : ''}
           <div class="url-card-meta">
-            <span class="url-meta-item">👆 ${formatNumber(item.clickCount || 0)} clicks</span>
-            <span class="url-meta-item">📅 Expires ${formatDate(item.expiresAt)}</span>
+            <span class="url-meta-item">${icons.clicks} ${formatNumber(item.clickCount || 0)} clicks</span>
+            <span class="url-meta-item">${icons.calendar} Expires ${formatDate(item.expiresAt)}</span>
           </div>
         </div>
         <div class="url-card-actions">
-          <button class="btn-icon" title="Copy link" data-action="copy">📋</button>
-          <button class="btn-icon" title="View QR code" data-action="qr">📱</button>
-          <button class="btn-icon" title="Analytics" data-action="analytics">📊</button>
+          <button class="btn-icon" title="Copy link" data-action="copy">${icons.copy}</button>
+          <button class="btn-icon" title="View QR code" data-action="qr">${icons.qr}</button>
+          <button class="btn-icon" title="Analytics" data-action="analytics">${icons.analytics}</button>
           <label class="toggle" title="${item.active ? 'Deactivate' : 'Activate'}">
             <input type="checkbox" ${item.active ? 'checked' : ''} data-action="toggle">
             <span class="toggle-slider"></span>
           </label>
-          <button class="btn-icon" title="Delete" data-action="delete" style="color: var(--danger);">🗑️</button>
+          <button class="btn-icon" title="Delete" data-action="delete" style="color: var(--danger);">${icons.trash}</button>
         </div>
       `;
 
@@ -186,7 +217,7 @@
         const action = btn.dataset.action;
         switch (action) {
           case 'copy':
-            copyToClipboard(item.shortUrl || `${window.location.origin}/${shortCode}`);
+            copyToClipboard(fullUrl);
             break;
           case 'qr':
             openQr(shortCode);
@@ -271,7 +302,6 @@
     } catch (err) {
       console.error('Toggle error:', err);
       showToast('Failed to toggle link status.', 'error');
-      // Reload to reset state
       loadUrls();
     }
   }

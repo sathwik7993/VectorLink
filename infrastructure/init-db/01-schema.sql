@@ -1,5 +1,5 @@
 -- Fallback sequence for ID generation when Redis is down
-CREATE SEQUENCE IF NOT EXISTS seq_short_urls START WITH 1000000;
+CREATE SEQUENCE IF NOT EXISTS seq_short_urls START WITH 1000000 INCREMENT BY 1000;
 
 -- 1. Create short_urls table
 CREATE TABLE IF NOT EXISTS short_urls (
@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS short_urls (
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     click_count BIGINT DEFAULT 0 NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    password_hash VARCHAR(255) NULL,
+    fallback_url TEXT NULL
 );
 
 -- Index for expiration cleanup and query checking
@@ -27,6 +29,8 @@ CREATE TABLE IF NOT EXISTS click_logs (
     country_code CHAR(2),
     device_type VARCHAR(50),
     event_id VARCHAR(64) NOT NULL,
+    browser VARCHAR(50) NULL,
+    operating_system VARCHAR(50) NULL,
     PRIMARY KEY (id, clicked_at)
 ) PARTITION BY RANGE (clicked_at);
 
@@ -56,6 +60,15 @@ CREATE TABLE IF NOT EXISTS daily_url_analytics (
     device_desktop_count INT DEFAULT 0 NOT NULL,
     device_mobile_count INT DEFAULT 0 NOT NULL,
     device_tablet_count INT DEFAULT 0 NOT NULL,
+    browser_chrome_count INT DEFAULT 0 NOT NULL,
+    browser_safari_count INT DEFAULT 0 NOT NULL,
+    browser_firefox_count INT DEFAULT 0 NOT NULL,
+    browser_other_count INT DEFAULT 0 NOT NULL,
+    os_windows_count INT DEFAULT 0 NOT NULL,
+    os_macos_count INT DEFAULT 0 NOT NULL,
+    os_android_count INT DEFAULT 0 NOT NULL,
+    os_ios_count INT DEFAULT 0 NOT NULL,
+    os_other_count INT DEFAULT 0 NOT NULL,
     PRIMARY KEY (short_code, click_date)
 );
 

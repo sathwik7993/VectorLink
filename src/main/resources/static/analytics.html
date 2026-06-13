@@ -6,6 +6,13 @@
   <title>Analytics — VectorLink</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    @media (min-width: 1025px) {
+      .chart-grid-equal {
+        grid-template-columns: 1fr 1fr !important;
+      }
+    }
+  </style>
 </head>
 <body>
 
@@ -16,11 +23,13 @@
         <span class="logo-icon">⚡</span>
         <span>VectorLink</span>
       </a>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">☰</button>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
       <ul class="nav-links" id="navLinks">
         <li><a href="index.html">Home</a></li>
         <li><a href="dashboard.html">Dashboard</a></li>
-        <li><a href="https://github.com" target="_blank" rel="noopener">GitHub ↗</a></li>
+        <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
       </ul>
     </div>
   </nav>
@@ -28,7 +37,10 @@
   <main class="container">
     <!-- Page Header -->
     <div class="page-header">
-      <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+      <a href="dashboard.html" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back to Dashboard
+      </a>
       <div class="analytics-header">
         <div class="analytics-url-info">
           <h2 id="analyticsTitle">Loading…</h2>
@@ -61,7 +73,7 @@
     </div>
 
     <!-- Charts -->
-    <div class="chart-grid">
+    <div class="chart-grid" id="chartGridMain">
       <div class="glass-card-static chart-container">
         <h3>Clicks Over Time</h3>
         <div class="chart-canvas-wrapper">
@@ -76,6 +88,22 @@
       </div>
     </div>
 
+    <!-- Browser & OS Charts -->
+    <div class="chart-grid chart-grid-equal" id="chartGridSecondary">
+      <div class="glass-card-static chart-container">
+        <h3>Browser Breakdown</h3>
+        <div class="chart-canvas-wrapper" style="max-width: 280px; margin: 0 auto;">
+          <canvas id="browserChart"></canvas>
+        </div>
+      </div>
+      <div class="glass-card-static chart-container">
+        <h3>OS Breakdown</h3>
+        <div class="chart-canvas-wrapper" style="max-width: 280px; margin: 0 auto;">
+          <canvas id="osChart"></canvas>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading State -->
     <div class="page-loader hidden" id="pageLoader">
       <div class="loader-spinner"></div>
@@ -84,7 +112,11 @@
 
     <!-- No Data State -->
     <div class="empty-state hidden" id="emptyState">
-      <div class="empty-state-icon">📊</div>
+      <div class="empty-state-icon">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.3;">
+          <path d="M18 20V10M12 20V4M6 20v-6"/>
+        </svg>
+      </div>
       <h3>No analytics data yet</h3>
       <p>Once people start clicking your link, analytics will appear here.</p>
       <a href="dashboard.html" class="btn btn-secondary">Back to Dashboard</a>
@@ -95,7 +127,7 @@
   <footer class="footer" style="margin-top: var(--space-16);">
     <div class="container">
       <div class="footer-content">
-        <p>© 2026 VectorLink. Built with Spring Boot, Redis, Kafka & PostgreSQL.</p>
+        <p>© 2026 VectorLink. Built with Spring Boot, Redis, Kafka &amp; PostgreSQL.</p>
         <ul class="footer-links">
           <li><a href="index.html">Home</a></li>
           <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>

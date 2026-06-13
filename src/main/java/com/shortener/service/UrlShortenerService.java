@@ -9,14 +9,19 @@ import com.shortener.exception.ResourceNotFoundException;
 import com.shortener.repository.ShortUrlRepository;
 import com.shortener.util.Base62;
 import com.shortener.util.FeistelCipher;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,6 +30,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -38,11 +46,25 @@ public class UrlShortenerService {
     private static final long DEFAULT_TTL_SECONDS = 604800; // 7 days
     private static final Pattern ALIAS_PATTERN = Pattern.compile("^[a-zA-Z0-9\\-]{3,30}$");
 
+    // L1 and L2 cache / database sequence circuit-breaker state
+    private static final AtomicBoolean REDIS_DOWN = new AtomicBoolean(false);
+
+    // Kafka failover queue and buffers
+    private static final ConcurrentLinkedQueue<ClickEvent> KAFKA_BUFFER = new ConcurrentLinkedQueue<>();
+    private static final int BUFFER_CAPACITY = 50000;
+    private static final AtomicInteger BUFFER_SIZE = new AtomicInteger(0);
+    private static final AtomicBoolean KAFKA_DOWN = new AtomicBoolean(false);
+    private static final Object logFileLock = new Object();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule());
+
     private final IdGeneratorService idGenerator;
     private final ShortUrlRepository shortUrlRepository;
     private final StringRedisTemplate redisTemplate;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final CacheManager caffeineCacheManager;
+    private final RestTemplate restTemplate;
+    private final com.github.benmanes.caffeine.cache.Cache<String, String> ipCountryCache;
 
     public UrlShortenerService(
             IdGeneratorService idGenerator,
@@ -55,6 +77,15 @@ public class UrlShortenerService {
         this.redisTemplate = redisTemplate;
         this.kafkaTemplate = kafkaTemplate;
         this.caffeineCacheManager = caffeineCacheManager;
+        
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(500);
+        requestFactory.setReadTimeout(500);
+        this.restTemplate = new RestTemplate(requestFactory);
+        this.ipCountryCache = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                .expireAfterWrite(1, java.util.concurrent.TimeUnit.HOURS)
+                .maximumSize(5000)
+                .build();
     }
 
     /**
@@ -89,6 +120,11 @@ public class UrlShortenerService {
             }
         }
 
+        String passwordHash = null;
+        if (request.password() != null && !request.password().isEmpty()) {
+            passwordHash = hashPassword(request.password(), shortCode);
+        }
+
         ShortUrl shortUrl = ShortUrl.builder()
                 .id(sequenceId)
                 .shortCode(shortCode)
@@ -97,28 +133,48 @@ public class UrlShortenerService {
                 .active(true)
                 .clickCount(0)
                 .expiresAt(expiresAt)
+                .passwordHash(passwordHash)
+                .fallbackUrl(request.fallbackUrl())
                 .build();
 
         // 4. Save to database
         shortUrlRepository.save(shortUrl);
 
-        // 5. Pre-seed Redis cache (Write-Through) to guarantee a 100% cache hit rate initially
+        // 5. Pre-seed cache (Write-Through) to guarantee a 100% cache hit rate initially
+        CachedUrlInfo cachedUrlInfo = new CachedUrlInfo(
+                request.longUrl(),
+                passwordHash,
+                request.fallbackUrl(),
+                true,
+                expiresAt
+        );
+
         try {
-            redisTemplate.opsForValue().set(
-                    REDIS_PREFIX + shortCode,
-                    request.longUrl(),
-                    Duration.ofSeconds(ttlSeconds)
-            );
-            // Also cache the custom alias mapping if provided
-            if (customAlias != null) {
+            String json = OBJECT_MAPPER.writeValueAsString(cachedUrlInfo);
+            if (!isRedisDown()) {
                 redisTemplate.opsForValue().set(
-                        REDIS_PREFIX + customAlias,
-                        request.longUrl(),
+                        REDIS_PREFIX + shortCode,
+                        json,
                         Duration.ofSeconds(ttlSeconds)
                 );
+                // Also cache the custom alias mapping if provided
+                if (customAlias != null) {
+                    redisTemplate.opsForValue().set(
+                            REDIS_PREFIX + customAlias,
+                            json,
+                            Duration.ofSeconds(ttlSeconds)
+                    );
+                }
+            }
+            Cache l1Cache = caffeineCacheManager.getCache("l1-urls");
+            if (l1Cache != null) {
+                l1Cache.put(shortCode, cachedUrlInfo);
+                if (customAlias != null) {
+                    l1Cache.put(customAlias, cachedUrlInfo);
+                }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to seed Redis cache on creation: " + e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to seed cache on creation: " + e.getMessage());
         }
 
         // Return representation
@@ -131,78 +187,125 @@ public class UrlShortenerService {
      * Uses L1 (Caffeine) and L2 (Redis) cache before querying PostgreSQL with a stampede lock.
      * Checks if the URL is active before redirecting.
      */
-    public String resolveUrl(String shortCode) {
-        // 1. Read L1 Cache (Caffeine local, sub-microsecond)
+    public String resolveUrl(String shortCode, String clientToken, String cookieValue) {
         Cache l1Cache = caffeineCacheManager.getCache("l1-urls");
+        CachedUrlInfo cachedInfo = null;
+
+        // 1. Read L1 Cache
         if (l1Cache != null) {
             Cache.ValueWrapper wrapper = l1Cache.get(shortCode);
             if (wrapper != null) {
-                return (String) wrapper.get();
+                Object cachedObj = wrapper.get();
+                if (cachedObj instanceof CachedUrlInfo) {
+                    cachedInfo = (CachedUrlInfo) cachedObj;
+                } else if (cachedObj instanceof String) {
+                    try {
+                        cachedInfo = OBJECT_MAPPER.readValue((String) cachedObj, CachedUrlInfo.class);
+                    } catch (Exception e) {}
+                }
             }
         }
 
-        // 2. Read L2 Cache (Redis distributed, <1ms)
-        String redisKey = REDIS_PREFIX + shortCode;
-        String longUrl = null;
-        try {
-            longUrl = redisTemplate.opsForValue().get(redisKey);
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to query Redis L2 cache: " + e.getMessage());
-        }
-
-        if (longUrl != null) {
-            if (l1Cache != null) {
-                l1Cache.put(shortCode, longUrl);
+        // 2. Read L2 Cache
+        if (cachedInfo == null) {
+            String redisKey = REDIS_PREFIX + shortCode;
+            if (!isRedisDown()) {
+                try {
+                    String json = redisTemplate.opsForValue().get(redisKey);
+                    if (json != null) {
+                        cachedInfo = OBJECT_MAPPER.readValue(json, CachedUrlInfo.class);
+                        if (l1Cache != null) {
+                            l1Cache.put(shortCode, cachedInfo);
+                        }
+                    }
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Failed to query Redis L2 cache: " + e.getMessage());
+                    setRedisDown(true);
+                }
             }
-            return longUrl;
         }
 
         // 3. Cache Miss: Query PostgreSQL
-        // Synchronize on the shortCode string to block Thundering Herd (Cache Stampede)
-        synchronized (shortCode.intern()) {
-            // Double-check L2 cache in case another concurrent request just populated it
-            try {
-                longUrl = redisTemplate.opsForValue().get(redisKey);
-            } catch (Exception e) {}
-
-            if (longUrl != null) {
-                return longUrl;
-            }
-
-            // Fetch from database - try shortCode first, then customAlias
-            ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
-                    .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
-                    .orElseThrow(() -> new ResourceNotFoundException("Short URL not found or expired"));
-
-            if (shortUrl.isExpired()) {
-                throw new ResourceNotFoundException("Short URL has expired");
-            }
-
-            if (!shortUrl.isActive()) {
-                throw new ResourceNotFoundException("Short URL is currently inactive");
-            }
-
-            longUrl = shortUrl.getLongUrl();
-
-            // Warm both L1 and L2 caches
-            long remainingSeconds = Duration.between(Instant.now(), shortUrl.getExpiresAt()).getSeconds();
-            if (remainingSeconds > 0) {
-                try {
-                    redisTemplate.opsForValue().set(redisKey, longUrl, Duration.ofSeconds(remainingSeconds));
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Failed to update Redis L2 cache: " + e.getMessage());
+        if (cachedInfo == null) {
+            synchronized (shortCode.intern()) {
+                // Double check L2
+                String redisKey = REDIS_PREFIX + shortCode;
+                if (!isRedisDown()) {
+                    try {
+                        String json = redisTemplate.opsForValue().get(redisKey);
+                        if (json != null) {
+                            cachedInfo = OBJECT_MAPPER.readValue(json, CachedUrlInfo.class);
+                        }
+                    } catch (Exception e) {
+                        setRedisDown(true);
+                    }
                 }
-            }
 
-            if (l1Cache != null) {
-                l1Cache.put(shortCode, longUrl);
+                if (cachedInfo == null) {
+                    ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
+                            .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
+                            .orElseThrow(() -> new ResourceNotFoundException("Short URL not found or expired"));
+
+                    cachedInfo = new CachedUrlInfo(
+                            shortUrl.getLongUrl(),
+                            shortUrl.getPasswordHash(),
+                            shortUrl.getFallbackUrl(),
+                            shortUrl.isActive(),
+                            shortUrl.getExpiresAt()
+                    );
+
+                    // Warm L1 & L2 caches if not expired
+                    long remainingSeconds = Duration.between(Instant.now(), shortUrl.getExpiresAt()).getSeconds();
+                    if (remainingSeconds > 0) {
+                        if (!isRedisDown()) {
+                            try {
+                                String json = OBJECT_MAPPER.writeValueAsString(cachedInfo);
+                                redisTemplate.opsForValue().set(redisKey, json, Duration.ofSeconds(remainingSeconds));
+                            } catch (Exception e) {
+                                LOGGER.log(Level.WARNING, "Failed to update Redis L2 cache: " + e.getMessage());
+                                setRedisDown(true);
+                            }
+                        }
+                    }
+                }
+
+                if (l1Cache != null) {
+                    l1Cache.put(shortCode, cachedInfo);
+                }
             }
         }
 
-        // 4. Increment click count asynchronously
+        // 4. Validate expiration / activity state
+        boolean isExpired = Instant.now().isAfter(cachedInfo.expiresAt());
+        if (isExpired || !cachedInfo.active()) {
+            if (cachedInfo.fallbackUrl() != null && !cachedInfo.fallbackUrl().trim().isEmpty()) {
+                return cachedInfo.fallbackUrl();
+            }
+            if (isExpired) {
+                throw new ResourceNotFoundException("Short URL has expired");
+            } else {
+                throw new ResourceNotFoundException("Short URL is currently inactive");
+            }
+        }
+
+        // 5. Password protection check
+        if (cachedInfo.passwordHash() != null && !cachedInfo.passwordHash().trim().isEmpty()) {
+            boolean authorized = false;
+            if (clientToken != null && clientToken.equals(cachedInfo.passwordHash())) {
+                authorized = true;
+            }
+            if (!authorized && cookieValue != null && cookieValue.equals(cachedInfo.passwordHash())) {
+                authorized = true;
+            }
+            if (!authorized) {
+                throw new com.shortener.exception.PasswordRequiredException(shortCode);
+            }
+        }
+
+        // 6. Increment click count asynchronously
         incrementClickCountAsync(shortCode);
 
-        return longUrl;
+        return cachedInfo.longUrl();
     }
 
     /**
@@ -289,13 +392,16 @@ public class UrlShortenerService {
         }
 
         // Evict from L2 Redis cache
-        try {
-            redisTemplate.delete(REDIS_PREFIX + shortCode);
-            if (customAlias != null) {
-                redisTemplate.delete(REDIS_PREFIX + customAlias);
+        if (!isRedisDown()) {
+            try {
+                redisTemplate.delete(REDIS_PREFIX + shortCode);
+                if (customAlias != null) {
+                    redisTemplate.delete(REDIS_PREFIX + customAlias);
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Failed to evict from Redis cache: " + e.getMessage());
+                setRedisDown(true);
             }
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to evict from Redis cache: " + e.getMessage());
         }
     }
 
@@ -305,7 +411,9 @@ public class UrlShortenerService {
     public void trackClick(String shortCode, String referrer, String userAgent, String ipAddress) {
         Instant clickedAt = Instant.now();
         String deviceType = parseDeviceType(userAgent);
-        String countryCode = "US"; // Mock or geo-ip lookup fallback
+        String countryCode = getCountryFromIp(ipAddress);
+        String browser = parseBrowser(userAgent);
+        String operatingSystem = parseOS(userAgent);
 
         // Generate an event ID for database idempotency (deduplication)
         String eventId = generateEventId(shortCode, clickedAt, ipAddress, userAgent);
@@ -318,14 +426,32 @@ public class UrlShortenerService {
                 ipAddress,
                 countryCode,
                 deviceType,
-                eventId
+                eventId,
+                browser,
+                operatingSystem
         );
+
+        if (isKafkaDown()) {
+            bufferClickEvent(clickEvent);
+            return;
+        }
 
         // Publish asynchronously to Kafka, partitioning by shortCode to keep events for the same URL in-order
         try {
-            kafkaTemplate.send(KafkaConfig.CLICK_TOPIC, shortCode, clickEvent);
+            java.util.concurrent.CompletableFuture<org.springframework.kafka.support.SendResult<String, Object>> future = 
+                    kafkaTemplate.send(KafkaConfig.CLICK_TOPIC, shortCode, clickEvent);
+            
+            future.whenComplete((result, ex) -> {
+                if (ex != null) {
+                    LOGGER.log(Level.WARNING, "Failed to publish click event to Kafka for shortCode: " + shortCode, ex);
+                    setKafkaDown(true);
+                    bufferClickEvent(clickEvent);
+                }
+            });
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to publish click event to Kafka for shortCode: " + shortCode, e);
+            setKafkaDown(true);
+            bufferClickEvent(clickEvent);
         }
     }
 
@@ -356,4 +482,211 @@ public class UrlShortenerService {
             return UUID.randomUUID().toString(); // Fallback
         }
     }
+
+    // State checkers and recovery methods
+    public static boolean isRedisDown() {
+        return REDIS_DOWN.get();
+    }
+
+    public static void setRedisDown(boolean down) {
+        REDIS_DOWN.set(down);
+    }
+
+    public static boolean isKafkaDown() {
+        return KAFKA_DOWN.get();
+    }
+
+    public static void setKafkaDown(boolean down) {
+        KAFKA_DOWN.set(down);
+    }
+
+    public static ConcurrentLinkedQueue<ClickEvent> getKafkaBuffer() {
+        return KAFKA_BUFFER;
+    }
+
+    public static void decrementBufferSize() {
+        BUFFER_SIZE.decrementAndGet();
+    }
+
+    public static void bufferClickEventDirectly(ClickEvent clickEvent) {
+        KAFKA_BUFFER.offer(clickEvent);
+        BUFFER_SIZE.incrementAndGet();
+    }
+
+    public static void bufferClickEvent(ClickEvent clickEvent) {
+        while (true) {
+            int currentSize = BUFFER_SIZE.get();
+            if (currentSize >= BUFFER_CAPACITY) {
+                writeToDeadLetterLog(clickEvent);
+                return;
+            }
+            if (BUFFER_SIZE.compareAndSet(currentSize, currentSize + 1)) {
+                KAFKA_BUFFER.offer(clickEvent);
+                return;
+            }
+        }
+    }
+
+    private static void writeToDeadLetterLog(ClickEvent event) {
+        try {
+            java.io.File file = new java.io.File("C:\\Users\\SATHWIK.CH\\Downloads\\projects\\URL shortner\\logs\\dead_letter_clicks.log");
+            java.io.File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+            String json = OBJECT_MAPPER.writeValueAsString(event);
+            synchronized (logFileLock) {
+                java.nio.file.Files.writeString(
+                        file.toPath(),
+                        json + System.lineSeparator(),
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND
+                );
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Failed to write click event to dead letter log: " + event, e);
+        }
+    }
+
+    @Scheduled(fixedRate = 30000)
+    public void pingRedisScheduler() {
+        boolean pingSuccess = false;
+        try {
+            Boolean result = redisTemplate.execute((org.springframework.data.redis.connection.RedisConnection connection) -> {
+                connection.ping();
+                return true;
+            });
+            pingSuccess = Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            // Ignore connection errors
+        }
+
+        if (pingSuccess) {
+            if (REDIS_DOWN.getAndSet(false)) {
+                LOGGER.info("Redis connection recovered. Circuit breaker reset. Restoring standard L1 cache TTL (15s).");
+            }
+        } else {
+            if (!REDIS_DOWN.getAndSet(true)) {
+                LOGGER.warning("Redis is unreachable. Circuit breaker active. Stretching L1 cache TTL (10m).");
+            }
+        }
+    }
+
+    public String parseBrowser(String userAgent) {
+        if (userAgent == null) {
+            return "Other";
+        }
+        String ua = userAgent.toLowerCase();
+        if (ua.contains("edg") || ua.contains("edge")) {
+            return "Edge";
+        } else if (ua.contains("firefox")) {
+            return "Firefox";
+        } else if (ua.contains("chrome")) {
+            return "Chrome";
+        } else if (ua.contains("safari")) {
+            return "Safari";
+        }
+        return "Other";
+    }
+
+    public String parseOS(String userAgent) {
+        if (userAgent == null) {
+            return "Other";
+        }
+        String ua = userAgent.toLowerCase();
+        if (ua.contains("iphone") || ua.contains("ipad") || ua.contains("ipod")) {
+            return "iOS";
+        } else if (ua.contains("android")) {
+            return "Android";
+        } else if (ua.contains("windows")) {
+            return "Windows";
+        } else if (ua.contains("macintosh") || ua.contains("mac os x") || ua.contains("mac os")) {
+            return "macOS";
+        } else if (ua.contains("linux")) {
+            return "Linux";
+        }
+        return "Other";
+    }
+
+    public String getCountryFromIp(String ip) {
+        if (ip == null || ip.trim().isEmpty()) {
+            return "US";
+        }
+        ip = ip.trim();
+        if (ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("localhost") || ip.startsWith("192.168.") || ip.startsWith("10.")) {
+            return "LO";
+        }
+        if (ip.startsWith("172.16.") || ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.19.") || 
+            ip.startsWith("172.20.") || ip.startsWith("172.21.") || ip.startsWith("172.22.") || ip.startsWith("172.23.") || 
+            ip.startsWith("172.24.") || ip.startsWith("172.25.") || ip.startsWith("172.26.") || ip.startsWith("172.27.") || 
+            ip.startsWith("172.28.") || ip.startsWith("172.29.") || ip.startsWith("172.30.") || ip.startsWith("172.31.")) {
+            return "LO";
+        }
+
+        String cachedCountry = ipCountryCache.getIfPresent(ip);
+        if (cachedCountry != null) {
+            return cachedCountry;
+        }
+
+        try {
+            String url = "http://ip-api.com/json/" + ip + "?fields=countryCode";
+            IpApiResponse response = restTemplate.getForObject(url, IpApiResponse.class);
+            if (response != null && response.countryCode() != null) {
+                String cc = response.countryCode();
+                ipCountryCache.put(ip, cc);
+                return cc;
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to resolve IP country for " + ip + ": " + e.getMessage());
+        }
+        return "US";
+    }
+
+    public boolean verifyPassword(String shortCode, String password) {
+        ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
+                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
+                .orElseThrow(() -> new ResourceNotFoundException("Short URL not found"));
+
+        if (shortUrl.getPasswordHash() == null || shortUrl.getPasswordHash().isEmpty()) {
+            return true;
+        }
+        if (password == null) {
+            return false;
+        }
+        String inputHash = hashPassword(password, shortUrl.getShortCode());
+        return shortUrl.getPasswordHash().equals(inputHash);
+    }
+
+    public String getPasswordHash(String shortCode) {
+        ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
+                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
+                .orElseThrow(() -> new ResourceNotFoundException("Short URL not found"));
+        return shortUrl.getPasswordHash();
+    }
+
+    public String hashPassword(String password, String salt) {
+        if (password == null) return null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            String input = password + ":" + salt;
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Error hashing password", e);
+        }
+    }
+
+    public static record CachedUrlInfo(
+            String longUrl,
+            String passwordHash,
+            String fallbackUrl,
+            boolean active,
+            Instant expiresAt
+    ) {}
+
+    private static record IpApiResponse(String countryCode) {}
 }

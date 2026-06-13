@@ -38,9 +38,15 @@ public class ClickLog {
     @Column(name = "event_id", nullable = false, length = 64)
     private String eventId; // Deduplication hash
 
+    @Column(name = "browser", length = 50)
+    private String browser;
+
+    @Column(name = "operating_system", length = 50)
+    private String operatingSystem;
+
     public ClickLog() {}
 
-    public ClickLog(Long id, Instant clickedAt, String shortCode, String referrer, String userAgent, String ipAddress, String countryCode, String deviceType, String eventId) {
+    public ClickLog(Long id, Instant clickedAt, String shortCode, String referrer, String userAgent, String ipAddress, String countryCode, String deviceType, String eventId, String browser, String operatingSystem) {
         this.id = id;
         this.clickedAt = clickedAt;
         this.shortCode = shortCode;
@@ -50,6 +56,8 @@ public class ClickLog {
         this.countryCode = countryCode;
         this.deviceType = deviceType;
         this.eventId = eventId;
+        this.browser = browser;
+        this.operatingSystem = operatingSystem;
     }
 
     public Long getId() {
@@ -124,6 +132,22 @@ public class ClickLog {
         this.eventId = eventId;
     }
 
+    public String getBrowser() {
+        return browser;
+    }
+
+    public void setBrowser(String browser) {
+        this.browser = browser;
+    }
+
+    public String getOperatingSystem() {
+        return operatingSystem;
+    }
+
+    public void setOperatingSystem(String operatingSystem) {
+        this.operatingSystem = operatingSystem;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -138,6 +162,8 @@ public class ClickLog {
         private String countryCode;
         private String deviceType;
         private String eventId;
+        private String browser;
+        private String operatingSystem;
 
         public Builder id(Long id) {
             this.id = id;
@@ -184,8 +210,18 @@ public class ClickLog {
             return this;
         }
 
+        public Builder browser(String browser) {
+            this.browser = browser;
+            return this;
+        }
+
+        public Builder operatingSystem(String operatingSystem) {
+            this.operatingSystem = operatingSystem;
+            return this;
+        }
+
         public ClickLog build() {
-            return new ClickLog(id, clickedAt, shortCode, referrer, userAgent, ipAddress, countryCode, deviceType, eventId);
+            return new ClickLog(id, clickedAt, shortCode, referrer, userAgent, ipAddress, countryCode, deviceType, eventId, browser, operatingSystem);
         }
     }
 }

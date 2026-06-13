@@ -16,7 +16,8 @@
   const pageLoader    = document.getElementById('pageLoader');
   const emptyState    = document.getElementById('emptyState');
   const statsRow      = document.getElementById('statsRow');
-  const chartGrid     = document.querySelector('.chart-grid');
+  const chartGridMain = document.getElementById('chartGridMain');
+  const chartGridSecondary = document.getElementById('chartGridSecondary');
 
   const statTotal     = document.getElementById('statTotalClicks');
   const statDesktop   = document.getElementById('statDesktop');
@@ -30,6 +31,8 @@
   // Charts
   let clicksChart = null;
   let deviceChart = null;
+  let browserChart = null;
+  let osChart = null;
 
   // ─── Navbar ───
   window.addEventListener('scroll', () => {
@@ -39,18 +42,16 @@
   if (navToggle) {
     navToggle.addEventListener('click', () => {
       navLinks.classList.toggle('open');
-      navToggle.textContent = navLinks.classList.contains('open') ? '✕' : '☰';
     });
   }
 
   // ─── Toast ───
   function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
-    const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || icons.info}</span>
+      <span class="toast-icon"></span>
       <span class="toast-message">${message}</span>
     `;
     container.appendChild(toast);
@@ -65,11 +66,24 @@
     titleEl.textContent = 'No link specified';
     longUrlEl.textContent = 'Please select a link from the dashboard.';
     statsRow.classList.add('hidden');
-    if (chartGrid) chartGrid.classList.add('hidden');
+    if (chartGridMain) chartGridMain.classList.add('hidden');
+    if (chartGridSecondary) chartGridSecondary.classList.add('hidden');
     return;
   }
 
   titleEl.textContent = shortCode;
+
+  // ─── Extract short code from a shortUrl value ───
+  // The backend returns just the code (e.g. "abc123"), not a full URL.
+  function extractCode(shortUrl) {
+    if (!shortUrl) return '';
+    try {
+      return new URL(shortUrl).pathname.replace(/^\//, '');
+    } catch {
+      // Not a full URL — it IS the short code
+      return shortUrl;
+    }
+  }
 
   // ─── Fetch URL info ───
   async function loadUrlInfo() {
@@ -77,13 +91,7 @@
       const res = await fetch('/api/v1/urls');
       if (!res.ok) return;
       const urls = await res.json();
-      const match = urls.find(u => {
-        try {
-          return new URL(u.shortUrl).pathname.replace(/^\//, '') === shortCode;
-        } catch {
-          return false;
-        }
-      });
+      const match = urls.find(u => extractCode(u.shortUrl) === shortCode);
       if (match) {
         longUrlEl.textContent = match.longUrl || '';
         badgeEl.textContent = match.active ? 'Active' : 'Inactive';
@@ -99,7 +107,8 @@
   async function loadAnalytics() {
     pageLoader.classList.remove('hidden');
     statsRow.classList.add('hidden');
-    if (chartGrid) chartGrid.style.display = 'none';
+    if (chartGridMain) chartGridMain.style.display = 'none';
+    if (chartGridSecondary) chartGridSecondary.style.display = 'none';
 
     try {
       const res = await fetch(`/api/v1/analytics/${encodeURIComponent(shortCode)}`);
@@ -123,11 +132,37 @@
       let totalMobile   = 0;
       let totalTablet   = 0;
 
+      // Aggregate browser counts
+      let totalChrome = 0;
+      let totalSafari = 0;
+      let totalFirefox = 0;
+      let totalBrowserOther = 0;
+
+      // Aggregate OS counts
+      let totalWindows = 0;
+      let totalMacos = 0;
+      let totalAndroid = 0;
+      let totalIos = 0;
+      let totalOsOther = 0;
+
       records.forEach(r => {
         totalClicks  += r.clickCount || 0;
         totalDesktop += r.deviceDesktopCount || 0;
         totalMobile  += r.deviceMobileCount || 0;
         totalTablet  += r.deviceTabletCount || 0;
+
+        // Browsers
+        totalChrome += r.browserChromeCount || 0;
+        totalSafari += r.browserSafariCount || 0;
+        totalFirefox += r.browserFirefoxCount || 0;
+        totalBrowserOther += r.browserOtherCount || 0;
+
+        // OS
+        totalWindows += r.osWindowsCount || 0;
+        totalMacos += r.osMacosCount || 0;
+        totalAndroid += r.osAndroidCount || 0;
+        totalIos += r.osIosCount || 0;
+        totalOsOther += r.osOtherCount || 0;
       });
 
       const totalDevices = totalDesktop + totalMobile + totalTablet;
@@ -145,10 +180,13 @@
         : '0%';
 
       statsRow.classList.remove('hidden');
-      if (chartGrid) chartGrid.style.display = '';
+      if (chartGridMain) chartGridMain.style.display = '';
+      if (chartGridSecondary) chartGridSecondary.style.display = '';
 
       renderClicksChart(records);
       renderDeviceChart(totalDesktop, totalMobile, totalTablet);
+      renderBrowserChart(totalChrome, totalSafari, totalFirefox, totalBrowserOther);
+      renderOsChart(totalWindows, totalMacos, totalAndroid, totalIos, totalOsOther);
 
     } catch (err) {
       console.error('Analytics error:', err);
@@ -269,7 +307,6 @@
     const total = desktop + mobile + tablet;
 
     if (total === 0) {
-      // Show empty state for device chart
       return;
     }
 
@@ -288,6 +325,138 @@
             'rgba(102, 126, 234, 1)',
             'rgba(52, 211, 153, 1)',
             'rgba(251, 191, 36, 1)'
+          ],
+          borderWidth: 1,
+          hoverOffset: 6,
+          spacing: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 16,
+              usePointStyle: true,
+              pointStyleWidth: 10
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(18, 18, 26, 0.95)',
+            titleColor: '#f0f0f5',
+            bodyColor: '#f0f0f5',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: (item) => {
+                const pct = total > 0 ? Math.round((item.raw / total) * 100) : 0;
+                return `${item.label}: ${item.raw} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ─── Browser Breakdown (Doughnut Chart) ───
+  function renderBrowserChart(chrome, safari, firefox, other) {
+    const ctx = document.getElementById('browserChart');
+    if (!ctx) return;
+
+    if (browserChart) browserChart.destroy();
+
+    const total = chrome + safari + firefox + other;
+
+    browserChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Chrome', 'Safari', 'Firefox', 'Other'],
+        datasets: [{
+          data: [chrome, safari, firefox, other],
+          backgroundColor: [
+            'rgba(59, 130, 246, 0.85)',
+            'rgba(249, 115, 22, 0.85)',
+            'rgba(239, 68, 68, 0.85)',
+            'rgba(156, 163, 175, 0.85)'
+          ],
+          borderColor: [
+            'rgba(59, 130, 246, 1)',
+            'rgba(249, 115, 22, 1)',
+            'rgba(239, 68, 68, 1)',
+            'rgba(156, 163, 175, 1)'
+          ],
+          borderWidth: 1,
+          hoverOffset: 6,
+          spacing: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 16,
+              usePointStyle: true,
+              pointStyleWidth: 10
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(18, 18, 26, 0.95)',
+            titleColor: '#f0f0f5',
+            bodyColor: '#f0f0f5',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: (item) => {
+                const pct = total > 0 ? Math.round((item.raw / total) * 100) : 0;
+                return `${item.label}: ${item.raw} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ─── OS Breakdown (Doughnut Chart) ───
+  function renderOsChart(windows, macos, android, ios, other) {
+    const ctx = document.getElementById('osChart');
+    if (!ctx) return;
+
+    if (osChart) osChart.destroy();
+
+    const total = windows + macos + android + ios + other;
+
+    osChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Windows', 'macOS', 'Android', 'iOS', 'Other'],
+        datasets: [{
+          data: [windows, macos, android, ios, other],
+          backgroundColor: [
+            'rgba(6, 182, 212, 0.85)',
+            'rgba(168, 85, 247, 0.85)',
+            'rgba(34, 197, 94, 0.85)',
+            'rgba(236, 72, 153, 0.85)',
+            'rgba(107, 114, 128, 0.85)'
+          ],
+          borderColor: [
+            'rgba(6, 182, 212, 1)',
+            'rgba(168, 85, 247, 1)',
+            'rgba(34, 197, 94, 1)',
+            'rgba(236, 72, 153, 1)',
+            'rgba(107, 114, 128, 1)'
           ],
           borderWidth: 1,
           hoverOffset: 6,

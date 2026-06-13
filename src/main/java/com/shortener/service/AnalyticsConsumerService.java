@@ -63,6 +63,8 @@ public class AnalyticsConsumerService {
                         .countryCode(e.countryCode())
                         .deviceType(e.deviceType())
                         .eventId(e.eventId())
+                        .browser(e.browser())
+                        .operatingSystem(e.operatingSystem())
                         .build()
                 ).toList();
 
@@ -79,14 +81,48 @@ public class AnalyticsConsumerService {
                     .deviceDesktopCount(0)
                     .deviceMobileCount(0)
                     .deviceTabletCount(0)
+                    .browserChromeCount(0)
+                    .browserSafariCount(0)
+                    .browserFirefoxCount(0)
+                    .browserOtherCount(0)
+                    .osWindowsCount(0)
+                    .osMacosCount(0)
+                    .osAndroidCount(0)
+                    .osIosCount(0)
+                    .osOtherCount(0)
                     .build());
 
             agg.setClickCount(agg.getClickCount() + 1);
-            switch (event.deviceType()) {
-                case "desktop" -> agg.setDeviceDesktopCount(agg.getDeviceDesktopCount() + 1);
-                case "mobile" -> agg.setDeviceMobileCount(agg.getDeviceMobileCount() + 1);
-                case "tablet" -> agg.setDeviceTabletCount(agg.getDeviceTabletCount() + 1);
-                default -> {}
+            if (event.deviceType() != null) {
+                switch (event.deviceType().toLowerCase()) {
+                    case "desktop" -> agg.setDeviceDesktopCount(agg.getDeviceDesktopCount() + 1);
+                    case "mobile" -> agg.setDeviceMobileCount(agg.getDeviceMobileCount() + 1);
+                    case "tablet" -> agg.setDeviceTabletCount(agg.getDeviceTabletCount() + 1);
+                    default -> {}
+                }
+            }
+
+            if (event.browser() != null) {
+                switch (event.browser()) {
+                    case "Chrome" -> agg.setBrowserChromeCount(agg.getBrowserChromeCount() + 1);
+                    case "Safari" -> agg.setBrowserSafariCount(agg.getBrowserSafariCount() + 1);
+                    case "Firefox" -> agg.setBrowserFirefoxCount(agg.getBrowserFirefoxCount() + 1);
+                    default -> agg.setBrowserOtherCount(agg.getBrowserOtherCount() + 1);
+                }
+            } else {
+                agg.setBrowserOtherCount(agg.getBrowserOtherCount() + 1);
+            }
+
+            if (event.operatingSystem() != null) {
+                switch (event.operatingSystem()) {
+                    case "Windows" -> agg.setOsWindowsCount(agg.getOsWindowsCount() + 1);
+                    case "macOS" -> agg.setOsMacosCount(agg.getOsMacosCount() + 1);
+                    case "Android" -> agg.setOsAndroidCount(agg.getOsAndroidCount() + 1);
+                    case "iOS" -> agg.setOsIosCount(agg.getOsIosCount() + 1);
+                    default -> agg.setOsOtherCount(agg.getOsOtherCount() + 1);
+                }
+            } else {
+                agg.setOsOtherCount(agg.getOsOtherCount() + 1);
             }
         }
 
