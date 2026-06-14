@@ -14,7 +14,7 @@ public class JwtService {
 
     private static final String SECRET_STRING = "vlink-secure-jwt-secret-key-must-be-at-least-256-bits-long-and-secure!";
     private final SecretKey key = Keys.hmacShaKeyFor(SECRET_STRING.getBytes(StandardCharsets.UTF_8));
-    private final long expirationMs = 86400000; // 24 hours
+    private final long expirationMs = 2592000000L; // 30 days (30 * 24 * 60 * 60 * 1000)
 
     public String generateToken(String email, String role) {
         return Jwts.builder()

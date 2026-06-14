@@ -58,7 +58,7 @@ public class AuthController {
         Cookie cookie = new Cookie("vlink_jwt", token);
         cookie.setHttpOnly(true);
         cookie.setPath("/");
-        cookie.setMaxAge(86400); // 24 hours
+        cookie.setMaxAge(2592000); // 30 days
         cookie.setAttribute("SameSite", "Strict");
         if (servletRequest.isSecure() || "https".equalsIgnoreCase(servletRequest.getHeader("X-Forwarded-Proto"))) {
             cookie.setSecure(true);
