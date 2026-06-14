@@ -335,8 +335,45 @@
     });
   }
 
+  async function checkAuthAndPopulateNavbar() {
+    try {
+      const res = await fetch('/api/v1/auth/me');
+      if (res.ok) {
+        const user = await res.json();
+        if (navLinks) {
+          navLinks.innerHTML = `
+            <li><a href="index.html" class="active">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+            <li><button id="logoutBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: var(--text-sm); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">Sign Out</button></li>
+          `;
+          const logoutBtn = document.getElementById('logoutBtn');
+          if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+              await fetch('/api/v1/auth/logout', { method: 'POST' });
+              window.location.href = 'index.html';
+            });
+          }
+        }
+      } else {
+        if (navLinks) {
+          navLinks.innerHTML = `
+            <li><a href="index.html" class="active">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="login.html">Login</a></li>
+            <li><a href="register.html">Register</a></li>
+            <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+          `;
+        }
+      }
+    } catch (err) {
+      console.error('Navbar auth check error:', err);
+    }
+  }
+
   // ─── Init ───
   animateCounters();
   initScrollAnimations();
+  checkAuthAndPopulateNavbar();
 
 })();

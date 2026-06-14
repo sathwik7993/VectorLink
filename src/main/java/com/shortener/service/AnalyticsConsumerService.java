@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
 
 @Service
 public class AnalyticsConsumerService {
@@ -27,12 +30,15 @@ public class AnalyticsConsumerService {
 
     private final ClickLogRepository clickLogRepository;
     private final DailyUrlAnalyticsRepository dailyUrlAnalyticsRepository;
+    private final MeterRegistry meterRegistry;
 
     public AnalyticsConsumerService(
             ClickLogRepository clickLogRepository,
-            DailyUrlAnalyticsRepository dailyUrlAnalyticsRepository) {
+            DailyUrlAnalyticsRepository dailyUrlAnalyticsRepository,
+            MeterRegistry meterRegistry) {
         this.clickLogRepository = clickLogRepository;
         this.dailyUrlAnalyticsRepository = dailyUrlAnalyticsRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
@@ -51,6 +57,9 @@ public class AnalyticsConsumerService {
         }
 
         LOGGER.info("Consuming Kafka click analytics batch. Size: " + events.size());
+
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String batchStatus = "success";
 
         // 1. Map DTO ClickEvents to Entity ClickLogs
         List<ClickLog> clickLogs = events.stream()
@@ -137,10 +146,21 @@ public class AnalyticsConsumerService {
             ack.acknowledge();
             LOGGER.fine("Successfully processed and committed offset for " + events.size() + " click events.");
             
+            Counter.builder("analytics.events.consumed")
+                    .description("Total number of analytics click events consumed from Kafka")
+                    .register(meterRegistry)
+                    .increment(events.size());
         } catch (Exception e) {
+            batchStatus = "failure";
             LOGGER.log(Level.SEVERE, "Database persist failed for analytics batch. Offsets will not be committed.", e);
             // Throwing the exception forces Kafka to trigger standard retry/re-deliver policies
             throw e;
+        } finally {
+            sample.stop(Timer.builder("analytics.batch.latency")
+                    .description("Latency of processing analytics batch")
+                    .tag("status", batchStatus)
+                    .publishPercentileHistogram()
+                    .register(meterRegistry));
         }
     }
 }

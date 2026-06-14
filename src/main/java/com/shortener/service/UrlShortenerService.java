@@ -7,6 +7,8 @@ import com.shortener.dto.UrlResponse;
 import com.shortener.entity.ShortUrl;
 import com.shortener.exception.ResourceNotFoundException;
 import com.shortener.repository.ShortUrlRepository;
+import com.shortener.repository.UserRepository;
+import com.shortener.entity.User;
 import com.shortener.util.Base62;
 import com.shortener.util.FeistelCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +39,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.Gauge;
 
 @Service
 public class UrlShortenerService {
@@ -60,23 +66,29 @@ public class UrlShortenerService {
 
     private final IdGeneratorService idGenerator;
     private final ShortUrlRepository shortUrlRepository;
+    private final UserRepository userRepository;
     private final StringRedisTemplate redisTemplate;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final CacheManager caffeineCacheManager;
     private final RestTemplate restTemplate;
     private final com.github.benmanes.caffeine.cache.Cache<String, String> ipCountryCache;
+    private final MeterRegistry meterRegistry;
 
     public UrlShortenerService(
             IdGeneratorService idGenerator,
             ShortUrlRepository shortUrlRepository,
+            UserRepository userRepository,
             StringRedisTemplate redisTemplate,
             KafkaTemplate<String, Object> kafkaTemplate,
-            @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager) {
+            @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager,
+            MeterRegistry meterRegistry) {
         this.idGenerator = idGenerator;
         this.shortUrlRepository = shortUrlRepository;
+        this.userRepository = userRepository;
         this.redisTemplate = redisTemplate;
         this.kafkaTemplate = kafkaTemplate;
         this.caffeineCacheManager = caffeineCacheManager;
+        this.meterRegistry = meterRegistry;
         
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(500);
@@ -86,6 +98,11 @@ public class UrlShortenerService {
                 .expireAfterWrite(1, java.util.concurrent.TimeUnit.HOURS)
                 .maximumSize(5000)
                 .build();
+
+        // Register Kafka fallback queue size Gauge
+        Gauge.builder("kafka.fallback.queue.size", KAFKA_BUFFER, ConcurrentLinkedQueue::size)
+                .description("Size of the Kafka fallback buffer queue")
+                .register(meterRegistry);
     }
 
     /**
@@ -125,6 +142,13 @@ public class UrlShortenerService {
             passwordHash = hashPassword(request.password(), shortCode);
         }
 
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        User currentUser = null;
+        if (authentication != null && authentication.isAuthenticated() && !"anonymousUser".equals(authentication.getPrincipal())) {
+            String email = authentication.getName();
+            currentUser = userRepository.findByEmail(email).orElse(null);
+        }
+
         ShortUrl shortUrl = ShortUrl.builder()
                 .id(sequenceId)
                 .shortCode(shortCode)
@@ -135,6 +159,7 @@ public class UrlShortenerService {
                 .expiresAt(expiresAt)
                 .passwordHash(passwordHash)
                 .fallbackUrl(request.fallbackUrl())
+                .user(currentUser)
                 .build();
 
         // 4. Save to database
@@ -187,132 +212,218 @@ public class UrlShortenerService {
      * Uses L1 (Caffeine) and L2 (Redis) cache before querying PostgreSQL with a stampede lock.
      * Checks if the URL is active before redirecting.
      */
-    public String resolveUrl(String shortCode, String clientToken, String cookieValue) {
-        Cache l1Cache = caffeineCacheManager.getCache("l1-urls");
-        CachedUrlInfo cachedInfo = null;
+    public String resolveUrl(String shortCode, String clientToken, String cookieValue, String userAgent) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String status = "success";
+        String device = parseDeviceType(userAgent);
+        String browser = parseBrowser(userAgent);
 
-        // 1. Read L1 Cache
-        if (l1Cache != null) {
-            Cache.ValueWrapper wrapper = l1Cache.get(shortCode);
-            if (wrapper != null) {
-                Object cachedObj = wrapper.get();
-                if (cachedObj instanceof CachedUrlInfo) {
-                    cachedInfo = (CachedUrlInfo) cachedObj;
-                } else if (cachedObj instanceof String) {
-                    try {
-                        cachedInfo = OBJECT_MAPPER.readValue((String) cachedObj, CachedUrlInfo.class);
-                    } catch (Exception e) {}
-                }
-            }
-        }
+        try {
+            Cache l1Cache = caffeineCacheManager.getCache("l1-urls");
+            CachedUrlInfo cachedInfo = null;
 
-        // 2. Read L2 Cache
-        if (cachedInfo == null) {
-            String redisKey = REDIS_PREFIX + shortCode;
-            if (!isRedisDown()) {
-                try {
-                    String json = redisTemplate.opsForValue().get(redisKey);
-                    if (json != null) {
-                        cachedInfo = OBJECT_MAPPER.readValue(json, CachedUrlInfo.class);
-                        if (l1Cache != null) {
-                            l1Cache.put(shortCode, cachedInfo);
-                        }
+            // 1. Read L1 Cache
+            if (l1Cache != null) {
+                Cache.ValueWrapper wrapper = l1Cache.get(shortCode);
+                if (wrapper != null) {
+                    Object cachedObj = wrapper.get();
+                    if (cachedObj instanceof CachedUrlInfo) {
+                        cachedInfo = (CachedUrlInfo) cachedObj;
+                    } else if (cachedObj instanceof String) {
+                        try {
+                            cachedInfo = OBJECT_MAPPER.readValue((String) cachedObj, CachedUrlInfo.class);
+                        } catch (Exception e) {}
                     }
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Failed to query Redis L2 cache: " + e.getMessage());
-                    setRedisDown(true);
                 }
             }
-        }
 
-        // 3. Cache Miss: Query PostgreSQL
-        if (cachedInfo == null) {
-            synchronized (shortCode.intern()) {
-                // Double check L2
+            if (cachedInfo != null) {
+                Counter.builder("cache.requests")
+                        .tags("cache", "l1", "result", "hit")
+                        .register(meterRegistry).increment();
+            } else {
+                Counter.builder("cache.requests")
+                        .tags("cache", "l1", "result", "miss")
+                        .register(meterRegistry).increment();
+            }
+
+            // 2. Read L2 Cache
+            if (cachedInfo == null) {
                 String redisKey = REDIS_PREFIX + shortCode;
                 if (!isRedisDown()) {
                     try {
                         String json = redisTemplate.opsForValue().get(redisKey);
                         if (json != null) {
                             cachedInfo = OBJECT_MAPPER.readValue(json, CachedUrlInfo.class);
+                            Counter.builder("cache.requests")
+                                    .tags("cache", "l2", "result", "hit")
+                                    .register(meterRegistry).increment();
+                            if (l1Cache != null) {
+                                l1Cache.put(shortCode, cachedInfo);
+                            }
+                        } else {
+                            Counter.builder("cache.requests")
+                                    .tags("cache", "l2", "result", "miss")
+                                    .register(meterRegistry).increment();
                         }
                     } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Failed to query Redis L2 cache: " + e.getMessage());
                         setRedisDown(true);
+                        Counter.builder("cache.requests")
+                                .tags("cache", "l2", "result", "miss")
+                                .register(meterRegistry).increment();
                     }
+                } else {
+                    Counter.builder("cache.requests")
+                            .tags("cache", "l2", "result", "miss")
+                            .register(meterRegistry).increment();
                 }
+            }
 
-                if (cachedInfo == null) {
-                    ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
-                            .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
-                            .orElseThrow(() -> new ResourceNotFoundException("Short URL not found or expired"));
-
-                    cachedInfo = new CachedUrlInfo(
-                            shortUrl.getLongUrl(),
-                            shortUrl.getPasswordHash(),
-                            shortUrl.getFallbackUrl(),
-                            shortUrl.isActive(),
-                            shortUrl.getExpiresAt()
-                    );
-
-                    // Warm L1 & L2 caches if not expired
-                    long remainingSeconds = Duration.between(Instant.now(), shortUrl.getExpiresAt()).getSeconds();
-                    if (remainingSeconds > 0) {
-                        if (!isRedisDown()) {
-                            try {
-                                String json = OBJECT_MAPPER.writeValueAsString(cachedInfo);
-                                redisTemplate.opsForValue().set(redisKey, json, Duration.ofSeconds(remainingSeconds));
-                            } catch (Exception e) {
-                                LOGGER.log(Level.WARNING, "Failed to update Redis L2 cache: " + e.getMessage());
-                                setRedisDown(true);
+            // 3. Cache Miss: Query PostgreSQL
+            if (cachedInfo == null) {
+                synchronized (shortCode.intern()) {
+                    // Double check L2
+                    String redisKey = REDIS_PREFIX + shortCode;
+                    if (!isRedisDown()) {
+                        try {
+                            String json = redisTemplate.opsForValue().get(redisKey);
+                            if (json != null) {
+                                cachedInfo = OBJECT_MAPPER.readValue(json, CachedUrlInfo.class);
                             }
+                        } catch (Exception e) {
+                            setRedisDown(true);
                         }
                     }
-                }
 
-                if (l1Cache != null) {
-                    l1Cache.put(shortCode, cachedInfo);
+                    if (cachedInfo == null) {
+                        Counter.builder("cache.requests")
+                                .tags("cache", "db", "result", "hit")
+                                .register(meterRegistry).increment();
+
+                        ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
+                                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
+                                .orElseThrow(() -> new ResourceNotFoundException("Short URL not found or expired"));
+
+                        cachedInfo = new CachedUrlInfo(
+                                shortUrl.getLongUrl(),
+                                shortUrl.getPasswordHash(),
+                                shortUrl.getFallbackUrl(),
+                                shortUrl.isActive(),
+                                shortUrl.getExpiresAt()
+                        );
+
+                        // Warm L1 & L2 caches if not expired
+                        long remainingSeconds = Duration.between(Instant.now(), shortUrl.getExpiresAt()).getSeconds();
+                        if (remainingSeconds > 0) {
+                            if (!isRedisDown()) {
+                                try {
+                                    String json = OBJECT_MAPPER.writeValueAsString(cachedInfo);
+                                    redisTemplate.opsForValue().set(redisKey, json, Duration.ofSeconds(remainingSeconds));
+                                } catch (Exception e) {
+                                    LOGGER.log(Level.WARNING, "Failed to update Redis L2 cache: " + e.getMessage());
+                                    setRedisDown(true);
+                                }
+                            }
+                        }
+                    } else {
+                        Counter.builder("cache.requests")
+                                .tags("cache", "l2", "result", "hit")
+                                .register(meterRegistry).increment();
+                    }
+
+                    if (l1Cache != null) {
+                        l1Cache.put(shortCode, cachedInfo);
+                    }
                 }
             }
-        }
 
-        // 4. Validate expiration / activity state
-        boolean isExpired = Instant.now().isAfter(cachedInfo.expiresAt());
-        if (isExpired || !cachedInfo.active()) {
-            if (cachedInfo.fallbackUrl() != null && !cachedInfo.fallbackUrl().trim().isEmpty()) {
-                return cachedInfo.fallbackUrl();
+            // 4. Validate expiration / activity state
+            boolean isExpired = Instant.now().isAfter(cachedInfo.expiresAt());
+            if (isExpired || !cachedInfo.active()) {
+                if (cachedInfo.fallbackUrl() != null && !cachedInfo.fallbackUrl().trim().isEmpty()) {
+                    return cachedInfo.fallbackUrl();
+                }
+                if (isExpired) {
+                    throw new ResourceNotFoundException("Short URL has expired");
+                } else {
+                    throw new ResourceNotFoundException("Short URL is currently inactive");
+                }
             }
-            if (isExpired) {
-                throw new ResourceNotFoundException("Short URL has expired");
+
+            // 5. Password protection check
+            if (cachedInfo.passwordHash() != null && !cachedInfo.passwordHash().trim().isEmpty()) {
+                boolean authorized = false;
+                if (clientToken != null && clientToken.equals(cachedInfo.passwordHash())) {
+                    authorized = true;
+                }
+                if (!authorized && cookieValue != null && cookieValue.equals(cachedInfo.passwordHash())) {
+                    authorized = true;
+                }
+                if (!authorized) {
+                    throw new com.shortener.exception.PasswordRequiredException(shortCode);
+                }
+            }
+
+            // 6. Increment click count asynchronously
+            incrementClickCountAsync(shortCode);
+
+            return cachedInfo.longUrl();
+        } catch (com.shortener.exception.PasswordRequiredException e) {
+            status = "password_required";
+            throw e;
+        } catch (ResourceNotFoundException e) {
+            if (e.getMessage().toLowerCase().contains("not found")) {
+                status = "not_found";
+            } else if (e.getMessage().toLowerCase().contains("expired")) {
+                status = "expired";
+            } else if (e.getMessage().toLowerCase().contains("inactive")) {
+                status = "inactive";
             } else {
-                throw new ResourceNotFoundException("Short URL is currently inactive");
+                status = "not_found";
             }
+            throw e;
+        } catch (Exception e) {
+            status = "error";
+            throw e;
+        } finally {
+            sample.stop(Timer.builder("redirect.latency")
+                    .description("Latency of short URL redirection")
+                    .publishPercentileHistogram()
+                    .register(meterRegistry));
+            Counter.builder("redirect.count")
+                    .description("Number of redirection requests")
+                    .tags("device", device, "browser", browser, "status", status)
+                    .register(meterRegistry)
+                    .increment();
         }
-
-        // 5. Password protection check
-        if (cachedInfo.passwordHash() != null && !cachedInfo.passwordHash().trim().isEmpty()) {
-            boolean authorized = false;
-            if (clientToken != null && clientToken.equals(cachedInfo.passwordHash())) {
-                authorized = true;
-            }
-            if (!authorized && cookieValue != null && cookieValue.equals(cachedInfo.passwordHash())) {
-                authorized = true;
-            }
-            if (!authorized) {
-                throw new com.shortener.exception.PasswordRequiredException(shortCode);
-            }
-        }
-
-        // 6. Increment click count asynchronously
-        incrementClickCountAsync(shortCode);
-
-        return cachedInfo.longUrl();
     }
 
     /**
      * Returns all URLs ordered by creation date (newest first).
      */
     public List<UrlResponse> listAllUrls() {
-        List<ShortUrl> urls = shortUrlRepository.findAllByOrderByCreatedAtDesc();
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        List<ShortUrl> urls;
+        if (authentication != null && authentication.isAuthenticated() && !"anonymousUser".equals(authentication.getPrincipal())) {
+            boolean isAdmin = authentication.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            
+            if (isAdmin) {
+                urls = shortUrlRepository.findAllByOrderByCreatedAtDesc();
+            } else {
+                String email = authentication.getName();
+                Optional<User> userOpt = userRepository.findByEmail(email);
+                if (userOpt.isPresent()) {
+                    urls = shortUrlRepository.findByUserOrderByCreatedAtDesc(userOpt.get());
+                } else {
+                    urls = java.util.Collections.emptyList();
+                }
+            }
+        } else {
+            urls = java.util.Collections.emptyList();
+        }
+
         return urls.stream()
                 .map(url -> new UrlResponse(
                         url.getShortCode(),
@@ -368,14 +479,14 @@ public class UrlShortenerService {
     /**
      * Increments click count asynchronously in the database.
      */
-    @Transactional
-    @Async
     public void incrementClickCountAsync(String shortCode) {
-        try {
-            shortUrlRepository.incrementClickCount(shortCode);
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to increment click count for: " + shortCode, e);
-        }
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                shortUrlRepository.incrementClickCount(shortCode);
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Failed to increment click count for: " + shortCode, e);
+            }
+        });
     }
 
     /**

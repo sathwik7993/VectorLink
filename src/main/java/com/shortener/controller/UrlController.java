@@ -75,19 +75,18 @@ public class UrlController {
             }
         }
 
+        String referrer = request.getHeader("Referer");
+        String userAgent = request.getHeader("User-Agent");
+        String ipAddress = getClientIp(request);
+
         try {
             // 1. Resolve redirect destination (Fast layer: L1/L2 caches, Fallback: Postgres with mutex)
-            String longUrl = urlShortenerService.resolveUrl(shortCode, token, cookieValue);
+            String longUrl = urlShortenerService.resolveUrl(shortCode, token, cookieValue, userAgent);
 
             // 2. Query parameter forwarding
             longUrl = appendQueryParams(longUrl, request.getQueryString());
 
-            // 3. Extract request metadata for analytics ingestion
-            String referrer = request.getHeader("Referer");
-            String userAgent = request.getHeader("User-Agent");
-            String ipAddress = getClientIp(request);
-
-            // 4. Asynchronously track the click via Kafka event stream
+            // 3. Asynchronously track the click via Kafka event stream
             urlShortenerService.trackClick(shortCode, referrer, userAgent, ipAddress);
 
             // 5. Return 302 Found redirect

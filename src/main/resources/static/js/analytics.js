@@ -89,6 +89,10 @@
   async function loadUrlInfo() {
     try {
       const res = await fetch('/api/v1/urls');
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
       if (!res.ok) return;
       const urls = await res.json();
       const match = urls.find(u => extractCode(u.shortUrl) === shortCode);
@@ -112,6 +116,10 @@
 
     try {
       const res = await fetch(`/api/v1/analytics/${encodeURIComponent(shortCode)}`);
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
       if (!res.ok) throw new Error(`Server error (${res.status})`);
 
       const data = await res.json();
@@ -183,10 +191,15 @@
       if (chartGridMain) chartGridMain.style.display = '';
       if (chartGridSecondary) chartGridSecondary.style.display = '';
 
-      renderClicksChart(records);
-      renderDeviceChart(totalDesktop, totalMobile, totalTablet);
-      renderBrowserChart(totalChrome, totalSafari, totalFirefox, totalBrowserOther);
-      renderOsChart(totalWindows, totalMacos, totalAndroid, totalIos, totalOsOther);
+      if (typeof Chart !== 'undefined') {
+        renderClicksChart(records);
+        renderDeviceChart(totalDesktop, totalMobile, totalTablet);
+        renderBrowserChart(totalChrome, totalSafari, totalFirefox, totalBrowserOther);
+        renderOsChart(totalWindows, totalMacos, totalAndroid, totalIos, totalOsOther);
+      } else {
+        console.warn('Chart.js is not loaded. Showing numeric statistics only.');
+        showToast('Chart.js could not be loaded. Showing raw numbers only.', 'warning');
+      }
 
     } catch (err) {
       console.error('Analytics error:', err);
@@ -496,9 +509,47 @@
     });
   }
 
+  async function initNavbar() {
+    try {
+      const res = await fetch('/api/v1/auth/me');
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return false;
+      }
+      if (res.ok) {
+        const user = await res.json();
+        if (navLinks) {
+          navLinks.innerHTML = `
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+            <li><button id="logoutBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: var(--text-sm); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">Sign Out</button></li>
+          `;
+          const logoutBtn = document.getElementById('logoutBtn');
+          if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+              await fetch('/api/v1/auth/logout', { method: 'POST' });
+              window.location.href = 'index.html';
+            });
+          }
+        }
+        return true;
+      }
+    } catch (err) {
+      console.error('Navbar init error:', err);
+    }
+    return false;
+  }
+
   // ─── Init ───
-  configureChartDefaults();
-  loadUrlInfo();
-  loadAnalytics();
+  async function init() {
+    const authenticated = await initNavbar();
+    if (authenticated) {
+      configureChartDefaults();
+      loadUrlInfo();
+      loadAnalytics();
+    }
+  }
+  init();
 
 })();

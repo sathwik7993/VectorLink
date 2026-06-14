@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -18,10 +20,13 @@ public interface ShortUrlRepository extends JpaRepository<ShortUrl, Long> {
 
     Optional<ShortUrl> findByCustomAlias(String alias);
 
+    List<ShortUrl> findByUserOrderByCreatedAtDesc(com.shortener.entity.User user);
+
     List<ShortUrl> findAllByOrderByCreatedAtDesc();
 
+    @Transactional
     @Modifying
-    @Query("UPDATE ShortUrl s SET s.clickCount = s.clickCount + 1 WHERE s.shortCode = :shortCode")
+    @Query("UPDATE ShortUrl s SET s.clickCount = s.clickCount + 1 WHERE s.shortCode = :shortCode OR s.customAlias = :shortCode")
     int incrementClickCount(@Param("shortCode") String shortCode);
 
     @Modifying

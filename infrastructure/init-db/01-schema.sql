@@ -1,6 +1,17 @@
 -- Fallback sequence for ID generation when Redis is down
 CREATE SEQUENCE IF NOT EXISTS seq_short_urls START WITH 1000000 INCREMENT BY 1000;
 
+-- 0. Create users table
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NULL, -- Nullable for OAuth-only users
+    provider VARCHAR(20) NOT NULL,    -- LOCAL, GITHUB, GOOGLE
+    provider_id VARCHAR(255) NULL,   -- Social login unique ID
+    role VARCHAR(20) DEFAULT 'USER' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 -- 1. Create short_urls table
 CREATE TABLE IF NOT EXISTS short_urls (
     id BIGINT PRIMARY KEY,
@@ -12,8 +23,12 @@ CREATE TABLE IF NOT EXISTS short_urls (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     password_hash VARCHAR(255) NULL,
-    fallback_url TEXT NULL
+    fallback_url TEXT NULL,
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Index for user ownership queries
+CREATE INDEX IF NOT EXISTS idx_short_urls_user_id ON short_urls (user_id);
 
 -- Index for expiration cleanup and query checking
 CREATE INDEX IF NOT EXISTS idx_short_urls_expires_at ON short_urls (expires_at);

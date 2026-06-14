@@ -37,6 +37,10 @@ public class ShortUrl {
     @Column(name = "fallback_url", columnDefinition = "TEXT")
     private String fallbackUrl;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
     public ShortUrl() {
         this.createdAt = Instant.now();
     }
@@ -44,6 +48,12 @@ public class ShortUrl {
     public ShortUrl(Long id, String shortCode, String longUrl, String customAlias,
                     boolean active, long clickCount, Instant createdAt, Instant expiresAt,
                     String passwordHash, String fallbackUrl) {
+        this(id, shortCode, longUrl, customAlias, active, clickCount, createdAt, expiresAt, passwordHash, fallbackUrl, null);
+    }
+
+    public ShortUrl(Long id, String shortCode, String longUrl, String customAlias,
+                    boolean active, long clickCount, Instant createdAt, Instant expiresAt,
+                    String passwordHash, String fallbackUrl, User user) {
         this.id = id;
         this.shortCode = shortCode;
         this.longUrl = longUrl;
@@ -54,6 +64,7 @@ public class ShortUrl {
         this.expiresAt = expiresAt;
         this.passwordHash = passwordHash;
         this.fallbackUrl = fallbackUrl;
+        this.user = user;
     }
 
     public boolean isExpired() {
@@ -140,6 +151,14 @@ public class ShortUrl {
         this.fallbackUrl = fallbackUrl;
     }
 
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -155,6 +174,7 @@ public class ShortUrl {
         private Instant expiresAt;
         private String passwordHash;
         private String fallbackUrl;
+        private User user;
 
         public Builder id(Long id) {
             this.id = id;
@@ -206,8 +226,13 @@ public class ShortUrl {
             return this;
         }
 
+        public Builder user(User user) {
+            this.user = user;
+            return this;
+        }
+
         public ShortUrl build() {
-            return new ShortUrl(id, shortCode, longUrl, customAlias, active, clickCount, createdAt, expiresAt, passwordHash, fallbackUrl);
+            return new ShortUrl(id, shortCode, longUrl, customAlias, active, clickCount, createdAt, expiresAt, passwordHash, fallbackUrl, user);
         }
     }
 }
