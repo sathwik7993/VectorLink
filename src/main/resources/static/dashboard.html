@@ -4,8 +4,269 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — VectorLink</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Manage, monitor, and optimize your VectorLink shortened URLs in one place. Real-time metrics and controls.">
+  <meta name="robots" content="noindex, nofollow">
+  
   <link rel="stylesheet" href="css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2.5'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>">
+  
+  <style>
+    /* ----- Modern Light Skeuomorphic Overrides ----- */
+    :root {
+      --bg: #F5F5F7;
+      --bg-secondary: #FFFFFF;
+      --surface: rgba(0, 0, 0, 0.02);
+      --surface-hover: rgba(0, 0, 0, 0.04);
+      --surface-border: rgba(0, 0, 0, 0.08);
+      --glass: rgba(255, 255, 255, 0.75);
+      --glass-border: rgba(0, 0, 0, 0.08);
+      --glass-hover: rgba(255, 255, 255, 0.85);
+
+      --accent: #0071E3;
+      --accent-secondary: #0077ED;
+      --gradient: linear-gradient(180deg, #3296FF 0%, #0071E3 100%);
+      --gradient-text: linear-gradient(135deg, #1D1D1F 30%, #0071E3 100%);
+      --gradient-subtle: linear-gradient(180deg, #FFFFFF 0%, #F5F5F7 100%);
+
+      --text-primary: #1D1D1F;
+      --text-secondary: #6E6E73;
+      --text-tertiary: #86868B;
+
+      --success: #34C759;
+      --success-bg: rgba(52, 199, 89, 0.12);
+      --danger: #FF3B30;
+      --danger-bg: rgba(255, 59, 48, 0.12);
+      --warning: #FF9500;
+      --warning-bg: rgba(255, 149, 0, 0.12);
+      --info: #0071E3;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04), 0 0 1px rgba(0,0,0,0.1);
+      --shadow-md: 0 4px 14px rgba(0,0,0,0.05), 0 0 1px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+      --shadow-lg: 0 10px 30px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+      --shadow-xl: 0 20px 50px rgba(0,0,0,0.08), 0 0 1px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95);
+      --shadow-glow: 0 0 15px rgba(0,113,227,0.15);
+      --shadow-glow-strong: 0 0 25px rgba(0,113,227,0.25);
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Tactile/Skeuomorphic cards */
+    .glass-card, .glass-card-static {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      box-shadow: 
+        0 8px 20px rgba(0,0,0,0.03), 
+        inset 0 1px 0 rgba(255,255,255,0.95), 
+        inset 0 0 0 1px rgba(255,255,255,0.5);
+      border-radius: var(--radius-xl);
+    }
+
+    /* Navbar background adjustment */
+    .navbar {
+      background: rgba(245, 245, 247, 0.85) !important;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+    .navbar.scrolled {
+      background: rgba(255, 255, 255, 0.95) !important;
+      border-bottom-color: rgba(0, 0, 0, 0.12) !important;
+    }
+    .nav-links a {
+      color: var(--text-secondary) !important;
+    }
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--text-primary) !important;
+    }
+
+    .nav-logo span {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 700;
+    }
+
+    /* Summary Stats Row */
+    .summary-stat-card {
+      background: #FFFFFF !important;
+      border: 1px solid rgba(0, 0, 0, 0.06) !important;
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.03), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+      border-radius: var(--radius-lg);
+    }
+
+    .summary-stat-card .stat-icon.purple { 
+      background: rgba(0, 113, 227, 0.08) !important; 
+      color: #0071E3 !important;
+      border: 1px solid rgba(0, 113, 227, 0.1) !important;
+    }
+    .summary-stat-card .stat-icon.green { 
+      background: rgba(52, 199, 89, 0.08) !important; 
+      color: #34C759 !important;
+      border: 1px solid rgba(52, 199, 89, 0.1) !important;
+    }
+    .summary-stat-card .stat-icon.blue { 
+      background: rgba(0, 113, 227, 0.08) !important; 
+      color: #0071E3 !important;
+      border: 1px solid rgba(0, 113, 227, 0.1) !important;
+    }
+
+    /* URL list card styling */
+    .url-card {
+      background: #FFFFFF !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+      box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.03), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+      border-radius: var(--radius-lg);
+      padding: var(--space-5) var(--space-6) !important;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    .url-card:hover {
+      border-color: rgba(0, 113, 227, 0.3) !important;
+      box-shadow: 
+        0 6px 16px rgba(0, 0, 0, 0.05), 
+        0 0 0 1px rgba(0, 113, 227, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+      transform: translateY(-1px);
+    }
+
+    .url-short {
+      color: var(--accent) !important;
+      font-weight: 600;
+    }
+
+    .url-long {
+      color: var(--text-secondary) !important;
+    }
+
+    /* Badges */
+    .badge-active {
+      background: rgba(52, 199, 89, 0.1) !important;
+      color: #1C8C3E !important;
+      border: 1px solid rgba(52, 199, 89, 0.2) !important;
+    }
+    .badge-inactive {
+      background: rgba(255, 59, 48, 0.1) !important;
+      color: #D32F2F !important;
+      border: 1px solid rgba(255, 59, 48, 0.2) !important;
+    }
+
+    /* Toggle switches */
+    .toggle-slider {
+      background: rgba(0, 0, 0, 0.08) !important;
+      border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    }
+    .toggle-slider::before {
+      background: #FFFFFF !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15), 0 0 1px rgba(0,0,0,0.2) !important;
+    }
+    .toggle input:checked + .toggle-slider {
+      background: linear-gradient(180deg, #3296FF 0%, #0071E3 100%) !important;
+    }
+
+    /* Input styling - inset, clean border */
+    .input {
+      background: #FFFFFF !important;
+      border: 1px solid rgba(0, 0, 0, 0.15) !important;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+      color: var(--text-primary) !important;
+      border-radius: var(--radius-lg);
+    }
+    .input:hover {
+      border-color: rgba(0, 0, 0, 0.25) !important;
+    }
+    .input:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 
+        0 0 0 3.5px rgba(0, 113, 227, 0.18), 
+        inset 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    /* Primary Button - Glossy Skeuomorphic Blue */
+    .btn-primary {
+      background: linear-gradient(180deg, #3597FF 0%, #0071E3 100%) !important;
+      border: 1px solid #0066CC !important;
+      color: #FFFFFF !important;
+      box-shadow: 
+        0 2px 4px rgba(0, 113, 227, 0.2), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+      text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-lg);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(180deg, #4DA3FF 0%, #007BF2 100%) !important;
+      border-color: #0071E3 !important;
+      box-shadow: 
+        0 4px 8px rgba(0, 113, 227, 0.25), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+    }
+    .btn-primary:active {
+      background: linear-gradient(180deg, #0066CC 0%, #005BB8 100%) !important;
+      box-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.2) !important;
+      transform: scale(0.98);
+    }
+
+    /* Secondary Button - Embossed Light Gray */
+    .btn-secondary {
+      background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F7 100%) !important;
+      border: 1px solid rgba(0, 0, 0, 0.15) !important;
+      color: var(--text-primary) !important;
+      box-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.04), 
+        inset 0 1px 0 #FFFFFF !important;
+      border-radius: var(--radius-lg);
+    }
+    .btn-secondary:hover {
+      background: linear-gradient(180deg, #F5F5F7 0%, #E8E8ED 100%) !important;
+      border-color: rgba(0, 0, 0, 0.2) !important;
+    }
+    .btn-secondary:active {
+      background: #E8E8ED !important;
+      box-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.1) !important;
+      transform: scale(0.98);
+    }
+
+    /* Loader */
+    .loader-spinner {
+      background: var(--gradient) !important;
+      mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0) !important;
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0) !important;
+    }
+
+    /* Footer elements */
+    .footer {
+      border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+    }
+    .footer p, .footer-links a {
+      color: var(--text-tertiary) !important;
+    }
+    .footer-links a:hover {
+      color: var(--text-primary) !important;
+    }
+
+    /* Toast styling */
+    .toast {
+      background: rgba(255, 255, 255, 0.95) !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.15) !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15) !important;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.25) !important;
+    }
+  </style>
 </head>
 <body>
 
@@ -13,7 +274,9 @@
   <nav class="navbar" id="navbar">
     <div class="container">
       <a href="index.html" class="nav-logo">
-        <span class="logo-icon">⚡</span>
+        <span class="logo-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent); vertical-align: middle;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </span>
         <span>VectorLink</span>
       </a>
       <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">

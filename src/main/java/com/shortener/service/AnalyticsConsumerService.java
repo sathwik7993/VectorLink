@@ -74,6 +74,10 @@ public class AnalyticsConsumerService {
                         .eventId(e.eventId())
                         .browser(e.browser())
                         .operatingSystem(e.operatingSystem())
+                        .latitude(e.latitude())
+                        .longitude(e.longitude())
+                        .city(e.city())
+                        .region(e.region())
                         .build()
                 ).toList();
 
@@ -141,6 +145,34 @@ public class AnalyticsConsumerService {
 
             // 4. Batch upsert daily aggregates (Atomic additions direct in PostgreSQL)
             dailyUrlAnalyticsRepository.batchUpsert(new ArrayList<>(aggregateMap.values()));
+
+            // Broadcast events to active Server-Sent Events stream subscribers
+            for (ClickEvent event : events) {
+                try {
+                    String country = event.countryCode();
+                    if ("LO".equalsIgnoreCase(country)) {
+                        country = "IN";
+                    }
+                    java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                    payload.put("shortCode", event.shortCode());
+                    payload.put("clickedAt", event.clickedAt().toString());
+                    payload.put("referrer", event.referrer() != null ? event.referrer() : "Direct");
+                    payload.put("userAgent", event.userAgent());
+                    payload.put("ipAddress", event.ipAddress());
+                    payload.put("countryCode", country);
+                    payload.put("deviceType", event.deviceType());
+                    payload.put("browser", event.browser());
+                    payload.put("operatingSystem", event.operatingSystem());
+                    payload.put("latitude", event.latitude());
+                    payload.put("longitude", event.longitude());
+                    payload.put("city", event.city() != null ? event.city() : "Unknown");
+                    payload.put("region", event.region() != null ? event.region() : "Unknown");
+
+                    com.shortener.controller.AnalyticsController.broadcastClick(event.shortCode(), payload);
+                } catch (Exception ex) {
+                    LOGGER.log(Level.WARNING, "Failed to broadcast click stream event: " + ex.getMessage());
+                }
+            }
 
             // 5. Commit Kafka offset manually
             ack.acknowledge();

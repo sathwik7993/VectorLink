@@ -44,9 +44,21 @@ public class ClickLog {
     @Column(name = "operating_system", length = 50)
     private String operatingSystem;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "city", length = 100)
+    private String city;
+
+    @Column(name = "region", length = 100)
+    private String region;
+
     public ClickLog() {}
 
-    public ClickLog(Long id, Instant clickedAt, String shortCode, String referrer, String userAgent, String ipAddress, String countryCode, String deviceType, String eventId, String browser, String operatingSystem) {
+    public ClickLog(Long id, Instant clickedAt, String shortCode, String referrer, String userAgent, String ipAddress, String countryCode, String deviceType, String eventId, String browser, String operatingSystem, Double latitude, Double longitude, String city, String region) {
         this.id = id;
         this.clickedAt = clickedAt;
         this.shortCode = shortCode;
@@ -58,6 +70,10 @@ public class ClickLog {
         this.eventId = eventId;
         this.browser = browser;
         this.operatingSystem = operatingSystem;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.city = city;
+        this.region = region;
     }
 
     public Long getId() {
@@ -148,6 +164,38 @@ public class ClickLog {
         this.operatingSystem = operatingSystem;
     }
 
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getRegion() {
+        return region;
+    }
+
+    public void setRegion(String region) {
+        this.region = region;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -164,6 +212,10 @@ public class ClickLog {
         private String eventId;
         private String browser;
         private String operatingSystem;
+        private Double latitude;
+        private Double longitude;
+        private String city;
+        private String region;
 
         public Builder id(Long id) {
             this.id = id;
@@ -220,8 +272,28 @@ public class ClickLog {
             return this;
         }
 
+        public Builder latitude(Double latitude) {
+            this.latitude = latitude;
+            return this;
+        }
+
+        public Builder longitude(Double longitude) {
+            this.longitude = longitude;
+            return this;
+        }
+
+        public Builder city(String city) {
+            this.city = city;
+            return this;
+        }
+
+        public Builder region(String region) {
+            this.region = region;
+            return this;
+        }
+
         public ClickLog build() {
-            return new ClickLog(id, clickedAt, shortCode, referrer, userAgent, ipAddress, countryCode, deviceType, eventId, browser, operatingSystem);
+            return new ClickLog(id, clickedAt, shortCode, referrer, userAgent, ipAddress, countryCode, deviceType, eventId, browser, operatingSystem, latitude, longitude, city, region);
         }
     }
 }

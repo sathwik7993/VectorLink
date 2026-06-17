@@ -345,7 +345,7 @@
             <li><a href="index.html" class="active">Home</a></li>
             <li><a href="dashboard.html">Dashboard</a></li>
             <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
-            <li><button id="logoutBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: var(--text-sm); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">Sign Out</button></li>
+            <li><button id="logoutBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: var(--text-sm); border: 1px solid rgba(0, 0, 0, 0.12); border-radius: var(--radius-sm); background: linear-gradient(to bottom, #ffffff, #f5f5f7); color: #1d1d1f; box-shadow: 0 1px 2px rgba(0,0,0,0.05); cursor: pointer; font-weight: 500;">Sign Out</button></li>
           `;
           const logoutBtn = document.getElementById('logoutBtn');
           if (logoutBtn) {

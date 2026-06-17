@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS click_logs (
     event_id VARCHAR(64) NOT NULL,
     browser VARCHAR(50) NULL,
     operating_system VARCHAR(50) NULL,
+    latitude DOUBLE PRECISION NULL,
+    longitude DOUBLE PRECISION NULL,
+    city VARCHAR(100) NULL,
+    region VARCHAR(100) NULL,
     PRIMARY KEY (id, clicked_at)
 ) PARTITION BY RANGE (clicked_at);
 

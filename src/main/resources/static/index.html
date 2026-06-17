@@ -3,10 +3,258 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VectorLink — Shorten. Track. Optimize.</title>
-  <meta name="description" content="Enterprise-grade URL shortener with real-time analytics, sub-5ms redirects, and full device-level insights. Powered by Redis, Kafka, and PostgreSQL.">
+  <title>VectorLink — Enterprise URL Shortener & Analytics</title>
+  
+  <!-- SEO & Social Meta Tags -->
+  <meta name="description" content="Optimize your audience reach with VectorLink. High-performance, sub-5ms URL redirects, enterprise-grade security, and real-time device-level analytics.">
+  <meta name="robots" content="index, follow">
+  <meta property="og:title" content="VectorLink — Enterprise URL Shortener & Analytics">
+  <meta property="og:description" content="High-performance, sub-5ms URL redirects, enterprise-grade security, and real-time device-level analytics.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://vectorlink.co">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="VectorLink — Enterprise URL Shortener & Analytics">
+  <meta name="twitter:description" content="High-performance, sub-5ms URL redirects, enterprise-grade security, and real-time device-level analytics.">
+  
   <link rel="stylesheet" href="css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2.5'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>">
+  
+  <style>
+    /* ----- Modern Light Skeuomorphic Overrides ----- */
+    :root {
+      --bg: #F5F5F7;
+      --bg-secondary: #FFFFFF;
+      --surface: rgba(0, 0, 0, 0.02);
+      --surface-hover: rgba(0, 0, 0, 0.04);
+      --surface-border: rgba(0, 0, 0, 0.08);
+      --glass: rgba(255, 255, 255, 0.75);
+      --glass-border: rgba(0, 0, 0, 0.08);
+      --glass-hover: rgba(255, 255, 255, 0.85);
+
+      --accent: #0071E3;
+      --accent-secondary: #0077ED;
+      --gradient: linear-gradient(180deg, #3296FF 0%, #0071E3 100%);
+      --gradient-text: linear-gradient(135deg, #1D1D1F 30%, #0071E3 100%);
+      --gradient-subtle: linear-gradient(180deg, #FFFFFF 0%, #F5F5F7 100%);
+
+      --text-primary: #1D1D1F;
+      --text-secondary: #6E6E73;
+      --text-tertiary: #86868B;
+
+      --success: #34C759;
+      --success-bg: rgba(52, 199, 89, 0.12);
+      --danger: #FF3B30;
+      --danger-bg: rgba(255, 59, 48, 0.12);
+      --warning: #FF9500;
+      --warning-bg: rgba(255, 149, 0, 0.12);
+      --info: #0071E3;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04), 0 0 1px rgba(0,0,0,0.1);
+      --shadow-md: 0 4px 14px rgba(0,0,0,0.05), 0 0 1px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+      --shadow-lg: 0 10px 30px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+      --shadow-xl: 0 20px 50px rgba(0,0,0,0.08), 0 0 1px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95);
+      --shadow-glow: 0 0 15px rgba(0,113,227,0.15);
+      --shadow-glow-strong: 0 0 25px rgba(0,113,227,0.25);
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Tactile/Skeuomorphic cards */
+    .glass-card, .glass-card-static {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      box-shadow: 
+        0 8px 20px rgba(0,0,0,0.03), 
+        inset 0 1px 0 rgba(255,255,255,0.95), 
+        inset 0 0 0 1px rgba(255,255,255,0.5);
+      border-radius: var(--radius-xl);
+    }
+
+    .glass-card:hover {
+      background: var(--glass-hover);
+      border-color: rgba(0, 0, 0, 0.12);
+      box-shadow: 
+        0 12px 28px rgba(0,0,0,0.05), 
+        inset 0 1px 0 rgba(255,255,255,0.95), 
+        inset 0 0 0 1px rgba(255,255,255,0.6),
+        var(--shadow-glow);
+    }
+
+    /* Form specific layouts */
+    .shortener-form {
+      box-shadow: 
+        0 12px 36px rgba(0, 0, 0, 0.05), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+      background: rgba(255, 255, 255, 0.8) !important;
+      padding: var(--space-6) !important;
+    }
+
+    /* Input styling - inset, clean border */
+    .input, .select {
+      background: #FFFFFF !important;
+      border: 1px solid rgba(0, 0, 0, 0.15) !important;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+      color: var(--text-primary) !important;
+      border-radius: var(--radius-lg);
+    }
+
+    .input:hover, .select:hover {
+      border-color: rgba(0, 0, 0, 0.25) !important;
+    }
+
+    .input:focus, .select:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 
+        0 0 0 3.5px rgba(0, 113, 227, 0.18), 
+        inset 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    /* Primary Button - Glossy Skeuomorphic Blue */
+    .btn-primary {
+      background: linear-gradient(180deg, #3597FF 0%, #0071E3 100%) !important;
+      border: 1px solid #0066CC !important;
+      color: #FFFFFF !important;
+      box-shadow: 
+        0 2px 4px rgba(0, 113, 227, 0.2), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+      text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-lg);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(180deg, #4DA3FF 0%, #007BF2 100%) !important;
+      border-color: #0071E3 !important;
+      box-shadow: 
+        0 4px 8px rgba(0, 113, 227, 0.25), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+    }
+
+    .btn-primary:active {
+      background: linear-gradient(180deg, #0066CC 0%, #005BB8 100%) !important;
+      box-shadow: 
+        inset 0 1.5px 3px rgba(0, 0, 0, 0.2) !important;
+      transform: scale(0.98);
+    }
+
+    /* Secondary Button - Embossed Light Gray */
+    .btn-secondary {
+      background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F7 100%) !important;
+      border: 1px solid rgba(0, 0, 0, 0.15) !important;
+      color: var(--text-primary) !important;
+      box-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.04), 
+        inset 0 1px 0 #FFFFFF !important;
+      border-radius: var(--radius-lg);
+    }
+
+    .btn-secondary:hover {
+      background: linear-gradient(180deg, #F5F5F7 0%, #E8E8ED 100%) !important;
+      border-color: rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .btn-secondary:active {
+      background: #E8E8ED !important;
+      box-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.1) !important;
+      transform: scale(0.98);
+    }
+
+    /* Navbar background adjustment */
+    .navbar {
+      background: rgba(245, 245, 247, 0.85) !important;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+    .navbar.scrolled {
+      background: rgba(255, 255, 255, 0.95) !important;
+      border-bottom-color: rgba(0, 0, 0, 0.12) !important;
+    }
+    .nav-links a {
+      color: var(--text-secondary) !important;
+    }
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--text-primary) !important;
+    }
+
+    .nav-logo span {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 700;
+    }
+
+    /* Hero adjustments */
+    .hero-grid {
+      background-image:
+        linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, black 40%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, black 40%, transparent 100%);
+    }
+    .hero-bg::before {
+      background: radial-gradient(circle, rgba(0, 113, 227, 0.06) 0%, transparent 70%);
+    }
+    .hero-bg::after {
+      background: radial-gradient(circle, rgba(0, 113, 227, 0.04) 0%, transparent 70%);
+    }
+
+    .hero-badge {
+      background: rgba(0, 113, 227, 0.06) !important;
+      border: 1px solid rgba(0, 113, 227, 0.15) !important;
+      color: var(--accent) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+    }
+
+    /* Feature card styling */
+    .feature-icon {
+      background: linear-gradient(180deg, rgba(0, 113, 227, 0.05) 0%, rgba(0, 113, 227, 0.1) 100%) !important;
+      color: var(--accent) !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 2px 4px rgba(0, 0, 0, 0.02);
+      border: 1px solid rgba(0, 113, 227, 0.1);
+    }
+
+    /* Stats Section styling */
+    .stats-section {
+      background: linear-gradient(180deg, rgba(0, 113, 227, 0.02) 0%, rgba(0, 113, 227, 0.05) 100%) !important;
+      border-top: 1px solid rgba(0, 113, 227, 0.08) !important;
+      border-bottom: 1px solid rgba(0, 113, 227, 0.08) !important;
+    }
+    
+    .stat-item + .stat-item {
+      border-top-color: rgba(0, 0, 0, 0.05) !important;
+    }
+
+    /* Toast styling */
+    .toast {
+      background: rgba(255, 255, 255, 0.95) !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.15) !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Result Card styling */
+    .result-qr {
+      background: #FFFFFF !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15) !important;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.25) !important;
+    }
+
+    input[type="datetime-local"] {
+      color-scheme: light !important;
+    }
+  </style>
 </head>
 <body>
 
@@ -14,7 +262,9 @@
   <nav class="navbar" id="navbar">
     <div class="container">
       <a href="index.html" class="nav-logo">
-        <span class="logo-icon">⚡</span>
+        <span class="logo-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent); vertical-align: middle;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </span>
         <span>VectorLink</span>
       </a>
       <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
@@ -63,7 +313,7 @@
             </span>
           </div>
           <button type="submit" class="btn btn-primary" id="submitBtn">
-            <span id="submitText">Shorten</span>
+            <span id="submitText">Shorten Link</span>
             <span id="submitSpinner" class="spinner hidden"></span>
           </button>
         </div>

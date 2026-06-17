@@ -71,7 +71,7 @@ public class UrlShortenerService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final CacheManager caffeineCacheManager;
     private final RestTemplate restTemplate;
-    private final com.github.benmanes.caffeine.cache.Cache<String, String> ipCountryCache;
+    private final com.github.benmanes.caffeine.cache.Cache<String, GeoDetails> ipCountryCache;
     private final MeterRegistry meterRegistry;
 
     public UrlShortenerService(
@@ -522,7 +522,7 @@ public class UrlShortenerService {
     public void trackClick(String shortCode, String referrer, String userAgent, String ipAddress) {
         Instant clickedAt = Instant.now();
         String deviceType = parseDeviceType(userAgent);
-        String countryCode = getCountryFromIp(ipAddress);
+        GeoDetails geo = getGeoDetailsFromIp(ipAddress);
         String browser = parseBrowser(userAgent);
         String operatingSystem = parseOS(userAgent);
 
@@ -535,11 +535,15 @@ public class UrlShortenerService {
                 referrer,
                 userAgent,
                 ipAddress,
-                countryCode,
+                geo.countryCode(),
                 deviceType,
                 eventId,
                 browser,
-                operatingSystem
+                operatingSystem,
+                geo.latitude(),
+                geo.longitude(),
+                geo.city(),
+                geo.region()
         );
 
         if (isKafkaDown()) {
@@ -719,38 +723,60 @@ public class UrlShortenerService {
         return "Other";
     }
 
-    public String getCountryFromIp(String ip) {
+    public static record GeoDetails(
+            String countryCode,
+            Double latitude,
+            Double longitude,
+            String city,
+            String region
+    ) {}
+
+    public GeoDetails getGeoDetailsFromIp(String ip) {
         if (ip == null || ip.trim().isEmpty()) {
-            return "US";
+            return new GeoDetails("US", 37.0902, -95.7129, "Washington", "District of Columbia");
         }
         ip = ip.trim();
-        if (ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("localhost") || ip.startsWith("192.168.") || ip.startsWith("10.")) {
-            return "LO";
+        // Mumbai, London, New York, Tokyo, Sydney coordinates for local testing so they spread out beautifully on the 3D map
+        if (ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("localhost")) {
+            return new GeoDetails("IN", 19.0760, 72.8777, "Mumbai", "Maharashtra");
+        } else if (ip.startsWith("192.168.1.")) {
+            return new GeoDetails("GB", 51.5074, -0.1278, "London", "Greater London");
+        } else if (ip.startsWith("192.168.2.")) {
+            return new GeoDetails("US", 40.7128, -74.0060, "New York", "New York");
+        } else if (ip.startsWith("192.168.")) {
+            return new GeoDetails("JP", 35.6762, 139.6503, "Tokyo", "Tokyo");
+        } else if (ip.startsWith("10.")) {
+            return new GeoDetails("AU", -33.8688, 151.2093, "Sydney", "New South Wales");
         }
+
         if (ip.startsWith("172.16.") || ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.19.") || 
             ip.startsWith("172.20.") || ip.startsWith("172.21.") || ip.startsWith("172.22.") || ip.startsWith("172.23.") || 
             ip.startsWith("172.24.") || ip.startsWith("172.25.") || ip.startsWith("172.26.") || ip.startsWith("172.27.") || 
             ip.startsWith("172.28.") || ip.startsWith("172.29.") || ip.startsWith("172.30.") || ip.startsWith("172.31.")) {
-            return "LO";
+            return new GeoDetails("IN", 19.0760, 72.8777, "Mumbai", "Maharashtra");
         }
 
-        String cachedCountry = ipCountryCache.getIfPresent(ip);
-        if (cachedCountry != null) {
-            return cachedCountry;
+        GeoDetails cached = ipCountryCache.getIfPresent(ip);
+        if (cached != null) {
+            return cached;
         }
 
         try {
-            String url = "http://ip-api.com/json/" + ip + "?fields=countryCode";
+            String url = "http://ip-api.com/json/" + ip + "?fields=countryCode,regionName,city,lat,lon";
             IpApiResponse response = restTemplate.getForObject(url, IpApiResponse.class);
             if (response != null && response.countryCode() != null) {
-                String cc = response.countryCode();
-                ipCountryCache.put(ip, cc);
-                return cc;
+                Double latitude = response.lat() != null ? response.lat() : 0.0;
+                Double longitude = response.lon() != null ? response.lon() : 0.0;
+                String city = response.city() != null ? response.city() : "Unknown";
+                String region = response.regionName() != null ? response.regionName() : "Unknown";
+                GeoDetails details = new GeoDetails(response.countryCode(), latitude, longitude, city, region);
+                ipCountryCache.put(ip, details);
+                return details;
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to resolve IP country for " + ip + ": " + e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to resolve IP geo details for " + ip + ": " + e.getMessage());
         }
-        return "US";
+        return new GeoDetails("US", 37.0902, -95.7129, "Washington", "District of Columbia");
     }
 
     public boolean verifyPassword(String shortCode, String password) {
@@ -799,5 +825,11 @@ public class UrlShortenerService {
             Instant expiresAt
     ) {}
 
-    private static record IpApiResponse(String countryCode) {}
+    private static record IpApiResponse(
+            String countryCode,
+            String regionName,
+            String city,
+            Double lat,
+            Double lon
+    ) {}
 }

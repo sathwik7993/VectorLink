@@ -12,5 +12,9 @@ public record ClickEvent(
     String deviceType,
     String eventId, // Unique key to guarantee idempotency in consumer
     String browser,
-    String operatingSystem
+    String operatingSystem,
+    Double latitude,
+    Double longitude,
+    String city,
+    String region
 ) {}

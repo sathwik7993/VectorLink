@@ -1,174 +1,151 @@
-# ⚡ VectorLink — High-Performance URL Shortener & Analytics Platform
+# ⚡ VectorLink — Enterprise-Grade URL Shortener & Analytics Platform
 
-VectorLink is a production-grade, highly optimized URL shortener system built for low latency and high scalability. It features a modern dark-glassmorphism web dashboard, real-time analytics aggregation, QR code generation, rate limiting, and an event-driven architecture.
+**Live Link**: [https://vectorlink.duckdns.org/](https://vectorlink.duckdns.org/)
 
-Designed to handle **50,000+ URL creations/day**, maintain **<5ms P99 redirect latency**, and achieve **<1s analytics ingestion lag** under heavy concurrency.
+VectorLink is a production-ready, highly optimized URL shortener system built for microsecond-scale redirects, extreme resilience, and real-time observability. It features a premium Light Skeuomorphic web UI inspired by Apple VisionOS & macOS design aesthetics, secure persistent authentication (Google OAuth2 + JWT), comprehensive Prometheus & Grafana monitoring, and an event-driven analytics engine.
 
----
-
-## ✨ Key Features
-
-- **🎨 Premium Web UI**: Responsive dark glassmorphism landing page, dashboard (link toggling, deleting, filtering), and interactive analytics charts (powered by Chart.js).
-- **🔒 URL Obfuscation**: Employs a 62-bit **Feistel Block Cipher** on sequence IDs before Base62 encoding. Ensures short codes look completely random (e.g. `1` becomes `4d3X2`) to prevent URL harvesting/enumeration attacks.
-- **🏷️ Custom Aliases**: Support for user-defined custom short paths (e.g. `localhost:8080/my-brand`) with strict alphanumeric validation.
-- **📱 QR Code Generator**: Generates downloadable high-quality PNG QR codes for every shortened URL instantly using the ZXing library.
-- **🚀 Dual-Layer Caching (L1 + L2)**: 
-  - **L1 (Local Caffeine Cache)**: Shielding the database from hot-spot thundering herds on viral links.
-  - **L2 (Distributed Redis Cache)**: Cache-Aside fallback for low-latency retrieval.
-- **🔒 Rate Limiting**: Built-in Bucket4j IP-based rate limiting (20 req/min for creator APIs, 100 req/min for redirects) preventing DDoS and scraping attacks.
-- **📈 Event-Driven Analytics**: Redirect paths offload click events asynchronously to **Apache Kafka**. A batch consumer gathers metadata (User-Agent, IP, Country, Referer) and aggregates it into a partitioned **PostgreSQL** schema in bulk.
-- **🛡️ Fallback Resilience**: Redis `INCR` acts as the primary sequence provider. If Redis goes offline, the system transparently falls back to a PostgreSQL sequence (`seq_short_urls`), preventing downtime.
+Designed to easily handle **50,000+ URL creations/day**, maintain **<5ms P99 redirect latency**, and achieve **<1s analytics ingestion lag** under high concurrency.
 
 ---
 
-## 🛠️ Architecture Stack
+## ✨ Features Overview
 
-- **Backend**: Java 17, Spring Boot 3.2.4 (JPA, Redis, Spring Kafka, Caffeine, Actuator)
-- **Frontend**: Vanilla HTML5, CSS3 (Glassmorphism design system), JavaScript (ES6+, Chart.js)
-- **Database**: PostgreSQL 15 (Declarative Range Partitioning by month)
-- **Cache**: Redis 7 & Caffeine L1
-- **Message Broker**: Apache Kafka (KRaft Single-Broker mode)
-- **Containerization**: Docker & Docker Compose
+### 🔑 Authentication & Session Security
+- **Secure JWT Persistent Sessions**: Users stay logged in for **30 days** using secure, signed, and `HttpOnly` cookie-based JWT authentication.
+- **Google OAuth2 Integration**: Seamless social sign-in with Google, plus fallback to local registration & login (passwords secured using BCrypt).
+- **Secure REST APIs**: Role-based security securing all modification, deletion, and analytic endpoints, returning clean `401 Unauthorized` JSON responses on unauthorized API access.
+
+### 🛡️ High Availability & Database Resilience
+- **Redis Downtime Circuit Breaker**: If Redis goes offline, the system automatically stretches L1 cache (Caffeine) expiration from 15 seconds to 10 minutes to protect PostgreSQL from database thundering herds, and falls back to a Postgres database sequence (`seq_short_urls`) for ID generation. A recovery scheduler pings Redis every 30 seconds to restore normal cache behaviors.
+- **Fail-Safe HiLo ID Generator**: Automatically pre-allocates blocks of 1,000 sequence IDs to prevent expensive database roundtrips on hot redirect creation paths.
+- **Kafka Resilience Buffer**: Click events are sent asynchronously to Apache Kafka. If Kafka goes down, events automatically buffer in an in-memory queue (capacity 50,000) or are written to a local dead-letter log (`logs/dead_letter_clicks.log`). A background scheduler recovers and drains buffered click events to Kafka once it's healthy.
+
+### 📈 Real-Time & Advanced Analytics
+- **User-Agent & Browser Resolution**: Deep parser resolves Operating Systems (Windows, macOS, iOS, Android, Linux, Other) and Browsers (Chrome, Safari, Firefox, Edge, Other) from requests.
+- **IP Geolocation**: Resolves and caches visitor country code via external APIs with local loopback/local IP address matching (to `"LO"`).
+- **Interactive Analytics Dashboard**: Beautiful visualizations mapping clicks over time, browser/OS/device distributions using **Chart.js**, an **interactive 3D Global Analytics Map** powered by **MapLibre GL** showing extruded click bars rising progressively from precise geolocation points, an **hourly traffic distribution graph** (24h UTC), and **top referring domains** ranking.
+- **Premium UI Animations**: Modern motion-design features hardware-accelerated entrance transitions (staggered slide-up using custom cubic-bezier curves) and interactive lift effects on card hover.
+
+### 🔒 Privacy, Gating & Redirection Control
+- **Password Protection**: Gate your short URLs with a password. Redirects are blocked until verified through a custom password entry card (`password.html`) which sets secure, short-term session cookies.
+- **Fallback URL Support**: Define fallback destinations. If a link is deactivated or expired, traffic redirects to your fallback page instead of returning a 404 page.
+- **Query Parameter Forwarding**: Automatically appends incoming query strings (e.g., `?utm_source=twitter`) from the short link onto the final long URL destination during the redirect process.
 
 ---
 
-## 📂 Project Structure
+## 🛠️ Tech Stack & Architecture
+
+- **Backend Framework**: Java 17, Spring Boot 3.2.4 (Security, OAuth2 Client, Cache, Kafka, Micrometer, Actuator)
+- **Frontend UI**: Vanilla HTML5, CSS3 Light Skeuomorphic design (Apple VisionOS & macOS premium aesthetics), JavaScript (ES6+, Chart.js, MapLibre GL)
+- **Primary Database**: PostgreSQL 15 (Declarative monthly range-partitioned tables for click logs, custom indexes for fast analytics queries)
+- **Distributed Caching**: Redis 7 & Caffeine L1 Cache
+- **Event Streaming**: Apache Kafka (KRaft Single-Broker mode)
+- **Monitoring & Observability**: Prometheus v2.45, Grafana v10.0.3
+- **CI/CD**: GitHub Actions CI/CD Pipeline
+
+---
+
+## 📂 Project Directory Structure
 
 ```
-├── docker-compose.yml              # PostgreSQL, Redis, Kafka, Web App stack
-├── Dockerfile                      # Multi-stage optimized JRE production build
-├── render.yaml                     # Render.com Blueprint configuration
-├── fly.toml                        # Fly.io deployment config
+├── .github/workflows/
+│   └── ci-cd.yml                   # CI/CD pipeline (tests, builds docker image, pushes to GHCR)
+├── load-tests/                     # k6 performance testing scripts (smoke, load, stress, spike)
 ├── infrastructure/
-│   └── init-db/
-│       └── 01-schema.sql           # Schema with partitioned tables & indexes
+│   ├── init-db/
+│   │   └── 01-schema.sql           # PostgreSQL schema (users, partitioned click logs, daily summaries)
+│   └── monitoring/
+│       ├── prometheus.yml          # Prometheus scrape target configuration
+│       └── grafana/                # Provisioned Grafana dashboard & datasources config
+├── docker-compose.yml              # Local multi-container development/observability stack
+├── Dockerfile                      # Multi-stage optimized JRE runtime container build
+├── .env.example                    # Template for Google OAuth environment variables
 └── src/
     └── main/
         ├── java/com/shortener/
-        │   ├── config/             # Caching, Web, Rate Limiting, Kafka configurations
-        │   ├── controller/         # URL creation, redirection, QR, and analytics APIs
-        │   ├── dto/                # Data Transfer Records (ClickEvent, Request/Response)
+        │   ├── config/             # Caching, Security, Rate Limiting, Kafka, Async configuration
+        │   ├── controller/         # REST Controllers (Auth, URL shortener, Analytics, QR)
+        │   ├── dto/                # Records (ClickEvent, Login/Register Request, UrlResponse)
         │   ├── entity/             # Hibernate JPA database mapping entities
-        │   ├── exception/          # Global exception advice handling
-        │   ├── repository/         # JPA repositories & Custom JDBC batch updates
-        │   └── service/            # Core business logic services
+        │   ├── repository/         # JPA repositories & Custom JDBC batch update queries
+        │   └── service/            # Core business, ID generation, security & consumer services
         └── resources/
-            ├── application.yml     # Local configuration properties
-            ├── application-prod.yml# Production properties (Kafka optional)
-            └── static/             # Frontend static files (HTML, CSS, JS)
+            ├── application.yml     # Application configuration
+            └── static/             # Frontend static resources (pages, stylesheet, JS controllers)
 ```
 
 ---
 
-## 🚦 Getting Started (Setup & Run)
+## 🚦 Local Setup & Run
 
 ### Prerequisites
-- [Java 17 SDK](https://adoptium.net/temurin/releases/?version=17) or higher
-- [Maven 3.9+](https://maven.apache.org/)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (daemon must be running)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Docker daemon must be running)
+- Google OAuth credentials (Client ID and Secret obtained from the Google Cloud Console)
 
----
+### Steps
 
-### Option 1: Run Everything with Docker Compose (Recommended)
+1. **Configure Environment Variables**:
+   Copy `.env.example` to `.env` in the root directory and add your Google credentials:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env`:
+   ```env
+   GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   ```
 
-This is the easiest way to spin up the entire production-grade stack (App, Postgres, Redis, Kafka):
-
-1. Start the Docker daemon (open Docker Desktop).
-2. Run the compose script from the project root:
+2. **Launch the Container Stack**:
+   Rebuild and launch all services (App, PostgreSQL, Redis, Kafka, Prometheus, Grafana) in detached mode:
    ```bash
    docker compose up --build -d
    ```
-3. Open your browser and go to:
-   👉 **[http://localhost:8080](http://localhost:8080)**
+
+3. **Explore Services**:
+   - ⚡ **VectorLink Web App**: [http://localhost:8080](http://localhost:8080)
+   - 📊 **Prometheus Scrape Portal**: [http://localhost:9090](http://localhost:9090)
+   - 📉 **Grafana Dashboard**: [http://localhost:3000](http://localhost:3000) (Default Login: `admin` / `admin`)
 
 ---
 
-### Option 2: Run Application Locally (For Development)
+## 📡 Core API Endpoints
 
-If you want to run the Spring Boot app locally in your IDE/terminal while hosting the database, cache, and broker inside Docker:
+### Auth APIs
+- `POST /api/v1/auth/register` — Register a new account locally.
+- `POST /api/v1/auth/login` — Sign in and receive a persistent secure cookie.
+- `POST /api/v1/auth/logout` — Revoke session cookie.
+- `GET /api/v1/auth/me` — Retrieve active user session details.
 
-1. Start only the backing infrastructure services:
+### Short URL APIs
+- `POST /api/v1/urls` — Create a shortened URL. Accepts custom alias, expiry TTL (seconds), password protection, and fallback URL.
+- `GET /api/v1/urls` — Get all shortened URLs belonging to the authenticated user.
+- `PATCH /api/v1/urls/{shortCode}/toggle` — Toggle the link active/inactive.
+- `DELETE /api/v1/urls/{shortCode}` — Delete the link and evict it from all caches.
+- `GET /api/v1/qr/{shortCode}` — Retrieve a high-quality downloadable QR Code PNG.
+
+### Analytics APIs
+- `GET /api/v1/analytics/{shortCode}` — Fetch daily aggregated analytics metrics for the given short code.
+- `GET /api/v1/analytics/{shortCode}/countries` — Fetch visitor country code distributions (country to click count map).
+- `GET /api/v1/analytics/{shortCode}/referrers` — Fetch visitor referrer distributions (referrer domain to click count map).
+- `GET /api/v1/analytics/{shortCode}/hourly` — Fetch 24-hour traffic pattern distributions (hour of day to click count map).
+
+---
+
+## 📈 Monitoring & Performance Validation
+
+### Grafana Monitoring
+You can monitor the JVM, DB pooling metrics, Kafka buffer lag, and HTTP redirect latency histograms. Log in at [http://localhost:3000](http://localhost:3000) using the default credentials (`admin`/`admin`).
+
+### Load Testing with k6
+The `load-tests/` directory contains k6 test scripts. To run load tests against the endpoints (e.g., redirect endpoints):
+1. Install [k6](https://k6.io/docs/getting-started/installation/).
+2. Run any of the configured scenarios:
    ```bash
-   docker compose up -d postgres redis kafka
+   k6 run load-tests/load_test.js
    ```
-2. Run the Spring Boot application:
-   ```bash
-   mvn spring-boot:run
-   ```
-3. Open your browser and go to:
-   👉 **[http://localhost:8080](http://localhost:8080)**
-
----
-
-## 📡 API Reference
-
-### 1. Create a Short URL
-- **Endpoint**: `POST /api/v1/urls`
-- **Headers**: `Content-Type: application/json`
-- **Request Body**:
-  ```json
-  {
-    "longUrl": "https://news.ycombinator.com",
-    "ttlSeconds": 86400,
-    "customAlias": "hn" 
-  }
-  ```
-- **Response** (201 Created):
-  ```json
-  {
-    "shortCode": "hn",
-    "longUrl": "https://news.ycombinator.com",
-    "expiresAt": "2026-06-13T17:39:42Z",
-    "customAlias": "hn",
-    "active": true,
-    "clickCount": 0,
-    "qrCodeUrl": "/api/v1/qr/hn"
-  }
-  ```
-
-### 2. List All URLs
-- **Endpoint**: `GET /api/v1/urls`
-- **Response** (200 OK): Returns a list of all active/inactive shortened URLs ordered by creation date (newest first).
-
-### 3. Toggle Active State
-- **Endpoint**: `PATCH /api/v1/urls/{shortCode}/toggle`
-- **Response** (200 OK): Toggles the target link's active state. Inactive links will immediately return a `404 Not Found` when resolved.
-
-### 4. Delete a Link
-- **Endpoint**: `DELETE /api/v1/urls/{shortCode}`
-- **Response** (204 No Content): Deletes the URL from the database and evicts it from all caches.
-
-### 5. Fetch Daily Analytics
-- **Endpoint**: `GET /api/v1/analytics/{shortCode}`
-- **Response** (200 OK):
-  ```json
-  [
-    {
-      "shortCode": "hn",
-      "clickDate": "2026-06-12",
-      "clickCount": 14,
-      "deviceDesktopCount": 10,
-      "deviceMobileCount": 3,
-      "deviceTabletCount": 1
-    }
-  ]
-  ```
-
-### 6. Get QR Code PNG
-- **Endpoint**: `GET /api/v1/qr/{shortCode}`
-- **Response** (200 OK): Returns a downloadable high-quality PNG QR Code image.
-
----
-
-## 🐳 Cloud Deployment
-
-For deploying VectorLink to the cloud for free, refer to the step-by-step instructions in the [Deployment Guide (DEPLOYMENT.md)](./DEPLOYMENT.md) which includes setup details for:
-- **Render.com** (via `render.yaml` Blueprint)
-- **Fly.io** (via `fly.toml`)
-- **Upstash Redis** (for free-tier serverless cache)
 
 ---
 
 ## 📜 License
 
-This project is open-source and licensed under the MIT License.
+This project is licensed under the MIT License.

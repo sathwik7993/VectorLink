@@ -23,8 +23,8 @@ public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
             return;
         }
 
-        String sql = "INSERT INTO click_logs (short_code, clicked_at, referrer, user_agent, ip_address, country_code, device_type, event_id, browser, operating_system) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+        String sql = "INSERT INTO click_logs (short_code, clicked_at, referrer, user_agent, ip_address, country_code, device_type, event_id, browser, operating_system, latitude, longitude, city, region) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                      "ON CONFLICT (event_id, clicked_at) DO NOTHING";
         
         jdbcTemplate.batchUpdate(sql, clickLogs, clickLogs.size(), (PreparedStatement ps, ClickLog click) -> {
@@ -38,6 +38,18 @@ public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
             ps.setString(8, click.getEventId());
             ps.setString(9, click.getBrowser());
             ps.setString(10, click.getOperatingSystem());
+            if (click.getLatitude() != null) {
+                ps.setDouble(11, click.getLatitude());
+            } else {
+                ps.setNull(11, java.sql.Types.DOUBLE);
+            }
+            if (click.getLongitude() != null) {
+                ps.setDouble(12, click.getLongitude());
+            } else {
+                ps.setNull(12, java.sql.Types.DOUBLE);
+            }
+            ps.setString(13, click.getCity());
+            ps.setString(14, click.getRegion());
         });
     }
 }
