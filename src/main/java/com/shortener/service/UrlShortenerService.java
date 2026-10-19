@@ -13,7 +13,9 @@ import com.shortener.util.Base62;
 import com.shortener.util.FeistelCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -69,17 +71,22 @@ public class UrlShortenerService {
     private final UserRepository userRepository;
     private final StringRedisTemplate redisTemplate;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ClickEventProcessor clickEventProcessor;
     private final CacheManager caffeineCacheManager;
     private final RestTemplate restTemplate;
     private final com.github.benmanes.caffeine.cache.Cache<String, GeoDetails> ipCountryCache;
     private final MeterRegistry meterRegistry;
+
+    @Value("${app.kafka.enabled:true}")
+    private boolean kafkaEnabled;
 
     public UrlShortenerService(
             IdGeneratorService idGenerator,
             ShortUrlRepository shortUrlRepository,
             UserRepository userRepository,
             StringRedisTemplate redisTemplate,
-            KafkaTemplate<String, Object> kafkaTemplate,
+            @Autowired(required = false) KafkaTemplate<String, Object> kafkaTemplate,
+            ClickEventProcessor clickEventProcessor,
             @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager,
             MeterRegistry meterRegistry) {
         this.idGenerator = idGenerator;
@@ -87,6 +94,7 @@ public class UrlShortenerService {
         this.userRepository = userRepository;
         this.redisTemplate = redisTemplate;
         this.kafkaTemplate = kafkaTemplate;
+        this.clickEventProcessor = clickEventProcessor;
         this.caffeineCacheManager = caffeineCacheManager;
         this.meterRegistry = meterRegistry;
         
@@ -518,6 +526,8 @@ public class UrlShortenerService {
 
     /**
      * Publishes a redirect click event asynchronously to Kafka for background processing.
+     * When Kafka is disabled (app.kafka.enabled=false, e.g. the free-tier prod profile with no
+     * broker available), the event is instead persisted synchronously via ClickEventProcessor.
      */
     public void trackClick(String shortCode, String referrer, String userAgent, String ipAddress) {
         Instant clickedAt = Instant.now();
@@ -545,6 +555,17 @@ public class UrlShortenerService {
                 geo.city(),
                 geo.region()
         );
+
+        if (!kafkaEnabled || kafkaTemplate == null) {
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    clickEventProcessor.processEvents(List.of(clickEvent));
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Failed to synchronously persist click event for shortCode: " + shortCode, e);
+                }
+            });
+            return;
+        }
 
         if (isKafkaDown()) {
             bufferClickEvent(clickEvent);

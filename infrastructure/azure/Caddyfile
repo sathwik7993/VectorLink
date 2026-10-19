@@ -1,0 +1,11 @@
+# Caddy gets and renews Let's Encrypt certs automatically.
+# DNS must point at the VM public IP first.
+vectorlink.duckdns.org {
+	encode gzip zstd
+	reverse_proxy vectorlink:8080
+}
+
+arch-sim.dev, www.arch-sim.dev {
+	encode gzip zstd
+	reverse_proxy archsim-frontend:80
+}

@@ -1,3 +1,7 @@
+app:
+  kafka:
+    enabled: true
+
 spring:
   application:
     name: url-shortener

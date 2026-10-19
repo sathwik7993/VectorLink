@@ -3,12 +3,15 @@
 # Activated via: SPRING_PROFILES_ACTIVE=prod
 # =============================================================================
 
+app:
+  # No Kafka broker is deployed on the free-tier EC2 instance (not enough RAM to run one
+  # alongside the app). This disables all Kafka beans/listeners/schedulers so the app doesn't
+  # waste time/memory trying to reach localhost:9092, and UrlShortenerService.trackClick()
+  # writes click events straight to Postgres via ClickEventProcessor instead.
+  kafka:
+    enabled: false
+
 spring:
-  # Disable Kafka — not available on free-tier cloud platforms.
-  # Analytics events will be processed synchronously instead.
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
   # PostgreSQL — all values injected from platform environment variables
   datasource:
