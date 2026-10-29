@@ -4,7 +4,21 @@
 
 VectorLink is a production-ready, highly optimized URL shortener system built for microsecond-scale redirects, extreme resilience, and real-time observability. It features a premium Light Skeuomorphic web UI inspired by Apple VisionOS & macOS design aesthetics, secure persistent authentication (Google OAuth2 + JWT), comprehensive Prometheus & Grafana monitoring, and an event-driven analytics engine.
 
-Designed to easily handle **50,000+ URL creations/day**, maintain **<5ms P99 redirect latency**, and achieve **<1s analytics ingestion lag** under high concurrency.
+### 📊 Measured performance
+Measured with k6 against the local Docker Compose stack (app, Postgres, Redis, Kafka, each in its own container; k6 on the same Docker network) on 2026-10-29:
+
+| Test | Load | Result |
+|------|------|--------|
+| `load-tests/redirect_latency_test.js` | 200 redirects/s, 30 s warm-up + 2 min measured (24,001 requests) | **P99 2.08 ms**, P95 1.45 ms, median 0.94 ms, 0 errors |
+| `load-tests/analytics_throughput_test.js` | 60,000 redirects in 4 min (250/s) | **60,001 / 60,001 click events persisted via Kafka**, 0 dead-lettered, 0 dropped |
+
+Both scripts fail if their targets are missed (`p(99)<5` ms; every click persisted). Re-run them with:
+```bash
+docker compose up -d --build
+docker run --rm --network urlshortner_default -v "$PWD/load-tests:/scripts" grafana/k6 run -e BASE_URL=http://app:8080 /scripts/redirect_latency_test.js
+docker run --rm --network urlshortner_default -v "$PWD/load-tests:/scripts" grafana/k6 run -e BASE_URL=http://app:8080 /scripts/analytics_throughput_test.js
+```
+These are local single-machine numbers; latency on the 2-vCPU Azure VM will differ.
 
 ---
 
@@ -16,9 +30,11 @@ Designed to easily handle **50,000+ URL creations/day**, maintain **<5ms P99 red
 - **Secure REST APIs**: Role-based security securing all modification, deletion, and analytic endpoints, returning clean `401 Unauthorized` JSON responses on unauthorized API access.
 
 ### 🛡️ High Availability & Database Resilience
-- **Redis Downtime Circuit Breaker**: If Redis goes offline, the system automatically stretches L1 cache (Caffeine) expiration from 15 seconds to 10 minutes to protect PostgreSQL from database thundering herds, and falls back to a Postgres database sequence (`seq_short_urls`) for ID generation. A recovery scheduler pings Redis every 30 seconds to restore normal cache behaviors.
-- **Fail-Safe HiLo ID Generator**: Automatically pre-allocates blocks of 1,000 sequence IDs to prevent expensive database roundtrips on hot redirect creation paths.
-- **Kafka Resilience Buffer**: Click events are sent asynchronously to Apache Kafka. If Kafka goes down, events automatically buffer in an in-memory queue (capacity 50,000) or are written to a local dead-letter log (`logs/dead_letter_clicks.log`). A background scheduler recovers and drains buffered click events to Kafka once it's healthy.
+- **Redis Downtime Circuit Breaker**: The first failed Redis call opens the breaker; reads then skip Redis and the L1 cache (Caffeine) stretches its expiration from 15 seconds to 10 minutes to protect PostgreSQL from thundering herds. A probe pings Redis every 30 seconds and closes the breaker once it answers.
+- **HiLo ID Generator**: All short-URL IDs come from the PostgreSQL sequence `seq_short_urls`, which increments by 1,000. Each `nextval()` reserves a block of 1,000 IDs that the instance hands out from memory, so one DB round-trip serves 1,000 creations and IDs stay unique across restarts, multiple instances and Redis outages. IDs are then Feistel-obfuscated and Base62-encoded.
+- **Off-Thread Click Tracking**: Geo-IP lookup and the Kafka publish run on a bounded executor (`clickTrackingExecutor`), so they never add latency to the redirect response.
+- **Kafka Dead-Letter Topic**: Failed records are retried 3 times, then published to `url-clicks.DLT` with the exception in headers. Poison pills (invalid JSON) are caught by `ErrorHandlingDeserializer`. A batch failure is narrowed to the single failing record, so good events in the same batch still land. Admins replay the DLT with `POST /api/v1/admin/dlq/replay/start` (and `/stop`). Persistence is idempotent on `event_id`, so redelivery and replay never double-count.
+- **Kafka Outage Buffer**: If the broker is unreachable, events buffer in an in-memory queue (capacity 50,000) and then spill to a local log (`app.kafka.dead-letter-log-path`). A scheduler drains both back to Kafka once it is healthy.
 
 ### 📈 Real-Time & Advanced Analytics
 - **User-Agent & Browser Resolution**: Deep parser resolves Operating Systems (Windows, macOS, iOS, Android, Linux, Other) and Browsers (Chrome, Safari, Firefox, Edge, Other) from requests.

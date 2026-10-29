@@ -53,6 +53,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/urls/verify-password").permitAll()
                 .requestMatchers("/api/v1/qr/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/{shortCode:[a-zA-Z0-9\\-]{3,30}}").permitAll()
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/v1/urls/**").authenticated()
                 .requestMatchers("/api/v1/analytics/**").authenticated()
                 .requestMatchers("/api/v1/auth/me").authenticated()

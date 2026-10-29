@@ -30,10 +30,21 @@ Desktop.ini
 *.log
 logs/
 
-# Credentials and Environment files
+# Credentials and Environment files (templates stay tracked)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-# Private keys
+# Private keys and certificates
 *.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# k6 result exports (--summary-export / --out json)
+load-tests/results/
+
+# VS Code Java upgrade tool output
+.github/modernize/

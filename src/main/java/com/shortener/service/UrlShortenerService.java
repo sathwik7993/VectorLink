@@ -63,6 +63,7 @@ public class UrlShortenerService {
     private static final AtomicInteger BUFFER_SIZE = new AtomicInteger(0);
     private static final AtomicBoolean KAFKA_DOWN = new AtomicBoolean(false);
     private static final Object logFileLock = new Object();
+    private static volatile String deadLetterLogPath = "logs/dead_letter_clicks.log";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
@@ -88,7 +89,8 @@ public class UrlShortenerService {
             @Autowired(required = false) KafkaTemplate<String, Object> kafkaTemplate,
             ClickEventProcessor clickEventProcessor,
             @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            @Value("${app.kafka.dead-letter-log-path:logs/dead_letter_clicks.log}") String deadLetterLogPath) {
         this.idGenerator = idGenerator;
         this.shortUrlRepository = shortUrlRepository;
         this.userRepository = userRepository;
@@ -97,7 +99,8 @@ public class UrlShortenerService {
         this.clickEventProcessor = clickEventProcessor;
         this.caffeineCacheManager = caffeineCacheManager;
         this.meterRegistry = meterRegistry;
-        
+        UrlShortenerService.deadLetterLogPath = deadLetterLogPath;
+
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(500);
         requestFactory.setReadTimeout(500);
@@ -525,10 +528,12 @@ public class UrlShortenerService {
     }
 
     /**
-     * Publishes a redirect click event asynchronously to Kafka for background processing.
-     * When Kafka is disabled (app.kafka.enabled=false, e.g. the free-tier prod profile with no
-     * broker available), the event is instead persisted synchronously via ClickEventProcessor.
+     * Publishes a redirect click event to Kafka for background processing.
+     * Runs on the clickTrackingExecutor so the geo-IP lookup and Kafka send never add latency to the
+     * redirect response. When Kafka is disabled (app.kafka.enabled=false), the event is persisted
+     * directly via ClickEventProcessor instead.
      */
+    @Async("clickTrackingExecutor")
     public void trackClick(String shortCode, String referrer, String userAgent, String ipAddress) {
         Instant clickedAt = Instant.now();
         String deviceType = parseDeviceType(userAgent);
@@ -557,13 +562,11 @@ public class UrlShortenerService {
         );
 
         if (!kafkaEnabled || kafkaTemplate == null) {
-            java.util.concurrent.CompletableFuture.runAsync(() -> {
-                try {
-                    clickEventProcessor.processEvents(List.of(clickEvent));
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Failed to synchronously persist click event for shortCode: " + shortCode, e);
-                }
-            });
+            try {
+                clickEventProcessor.processEvents(List.of(clickEvent));
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Failed to persist click event for shortCode: " + shortCode, e);
+            }
             return;
         }
 
@@ -636,6 +639,10 @@ public class UrlShortenerService {
         KAFKA_DOWN.set(down);
     }
 
+    public static String getDeadLetterLogPath() {
+        return deadLetterLogPath;
+    }
+
     public static ConcurrentLinkedQueue<ClickEvent> getKafkaBuffer() {
         return KAFKA_BUFFER;
     }
@@ -665,7 +672,7 @@ public class UrlShortenerService {
 
     private static void writeToDeadLetterLog(ClickEvent event) {
         try {
-            java.io.File file = new java.io.File("C:\\Users\\SATHWIK.CH\\Downloads\\projects\\URL shortner\\logs\\dead_letter_clicks.log");
+            java.io.File file = new java.io.File(deadLetterLogPath);
             java.io.File parent = file.getParentFile();
             if (parent != null && !parent.exists()) {
                 parent.mkdirs();

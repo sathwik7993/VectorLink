@@ -1,6 +1,11 @@
 app:
   kafka:
     enabled: true
+    # Overflow log used when Kafka is down and the in-memory buffer is full; replayed on recovery
+    dead-letter-log-path: ${DEAD_LETTER_LOG_PATH:logs/dead_letter_clicks.log}
+  jwt:
+    # Local development default only. application-prod.yml requires JWT_SECRET to be set.
+    secret: ${JWT_SECRET:local-dev-only-jwt-secret-do-not-use-in-production}
 
 spring:
   application:
@@ -83,3 +88,7 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

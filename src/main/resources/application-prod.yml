@@ -4,12 +4,15 @@
 # =============================================================================
 
 app:
-  # No Kafka broker is deployed on the free-tier EC2 instance (not enough RAM to run one
-  # alongside the app). This disables all Kafka beans/listeners/schedulers so the app doesn't
-  # waste time/memory trying to reach localhost:9092, and UrlShortenerService.trackClick()
-  # writes click events straight to Postgres via ClickEventProcessor instead.
+  # The Azure stack runs a single-node KRaft Kafka broker (infrastructure/azure/docker-compose.yml).
+  # Set KAFKA_ENABLED=false on hosts without a broker: all Kafka beans/listeners/schedulers are then
+  # disabled and UrlShortenerService.trackClick() writes click events straight to Postgres.
   kafka:
-    enabled: false
+    enabled: ${KAFKA_ENABLED:true}
+    dead-letter-log-path: ${DEAD_LETTER_LOG_PATH:/tmp/vectorlink/dead_letter_clicks.log}
+  jwt:
+    # Required in production; no default, so the app refuses to start without it
+    secret: ${JWT_SECRET}
 
 spring:
 
@@ -33,6 +36,10 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Kafka
+  kafka:
+    bootstrap-servers: ${KAFKA_HOST:kafka}:${KAFKA_PORT:9092}
 
   # Redis
   data:

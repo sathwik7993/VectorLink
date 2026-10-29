@@ -60,9 +60,18 @@ ArchSim schema comes from Flyway. VectorLink schema comes from `01-schema.sql`.
 Add `https://vectorlink.duckdns.org/login/oauth2/code/google` (check your Spring redirect path) to the authorized redirect URIs.
 
 ## 7. Update an app
+Automatic: every push to `main` that passes CI runs the `deploy-azure` job in `.github/workflows/ci-cd.yml`.
+It SSHes into the VM, pulls, rebuilds `vectorlink` and `kafka`, and waits for `/actuator/health` to report `UP`.
+Enable it by adding these repository secrets: `AZURE_VM_HOST` (public IP), `AZURE_VM_USER` (`azureuser`), `AZURE_VM_SSH_KEY` (private key).
+Without them the job is skipped.
+
+Manual:
 ```bash
-cd ~/apps/vectorlink && git pull && cd ~/stack && docker compose up -d --build vectorlink
+cd ~/apps/vectorlink && git pull && cd ~/stack && docker compose up -d --build vectorlink kafka
 ```
 
+`~/stack/.env` must define `JWT_SECRET` (at least 32 bytes, `openssl rand -base64 48`). The prod profile refuses to start without it.
+
 ## Memory (4 GB VM)
-Postgres 300m + Redis 100m + Caddy 60m + VectorLink 600m + ArchSim 650m + OS ≈ 2.2 GB. Swap covers build spikes.
+Postgres 300m + Redis 100m + Kafka 512m + Caddy 60m + VectorLink 600m + ArchSim 650m + OS ≈ 2.7 GB. Swap covers build spikes.
+To run without Kafka, set `KAFKA_ENABLED: "false"` on `vectorlink` and remove the `kafka` service; clicks are then written straight to Postgres.

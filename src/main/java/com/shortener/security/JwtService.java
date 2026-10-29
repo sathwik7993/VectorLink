@@ -3,6 +3,7 @@ package com.shortener.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -12,9 +13,19 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    private static final String SECRET_STRING = "vlink-secure-jwt-secret-key-must-be-at-least-256-bits-long-and-secure!";
-    private final SecretKey key = Keys.hmacShaKeyFor(SECRET_STRING.getBytes(StandardCharsets.UTF_8));
+    private final SecretKey key;
     private final long expirationMs = 2592000000L; // 30 days (30 * 24 * 60 * 60 * 1000)
+
+    /**
+     * The signing secret comes from the JWT_SECRET environment variable (app.jwt.secret).
+     * HS256 requires at least 32 bytes; startup fails fast if the secret is missing or too short.
+     */
+    public JwtService(@Value("${app.jwt.secret}") String secret) {
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("app.jwt.secret (JWT_SECRET) must be set and at least 32 bytes long");
+        }
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
 
     public String generateToken(String email, String role) {
         return Jwts.builder()

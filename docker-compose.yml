@@ -17,6 +17,7 @@ services:
       REDIS_PORT: 6379
       KAFKA_HOST: kafka
       KAFKA_PORT: 29092
+      JWT_SECRET: ${JWT_SECRET:-local-dev-only-jwt-secret-do-not-use-in-production}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
     depends_on:

@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.List;
 
 public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
@@ -18,16 +19,16 @@ public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
 
     @Override
     @Transactional
-    public void batchInsert(List<ClickLog> clickLogs) {
+    public int[] batchInsert(List<ClickLog> clickLogs) {
         if (clickLogs == null || clickLogs.isEmpty()) {
-            return;
+            return new int[0];
         }
 
         String sql = "INSERT INTO click_logs (short_code, clicked_at, referrer, user_agent, ip_address, country_code, device_type, event_id, browser, operating_system, latitude, longitude, city, region) " +
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                      "ON CONFLICT (event_id, clicked_at) DO NOTHING";
         
-        jdbcTemplate.batchUpdate(sql, clickLogs, clickLogs.size(), (PreparedStatement ps, ClickLog click) -> {
+        int[][] counts = jdbcTemplate.batchUpdate(sql, clickLogs, clickLogs.size(), (PreparedStatement ps, ClickLog click) -> {
             ps.setString(1, click.getShortCode());
             ps.setTimestamp(2, Timestamp.from(click.getClickedAt()));
             ps.setString(3, click.getReferrer());
@@ -51,5 +52,6 @@ public class CustomClickLogRepositoryImpl implements CustomClickLogRepository {
             ps.setString(13, click.getCity());
             ps.setString(14, click.getRegion());
         });
+        return Arrays.stream(counts).flatMapToInt(Arrays::stream).toArray();
     }
 }

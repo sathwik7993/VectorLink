@@ -1,4 +1,4 @@
--- Fallback sequence for ID generation when Redis is down
+-- HiLo sequence for short URL IDs: each nextval() reserves a block of 1000 IDs
 CREATE SEQUENCE IF NOT EXISTS seq_short_urls START WITH 1000000 INCREMENT BY 1000;
 
 -- 0. Create users table

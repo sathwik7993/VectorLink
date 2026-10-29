@@ -7,6 +7,7 @@ import com.shortener.entity.DailyUrlAnalyticsKey;
 import com.shortener.repository.ClickLogRepository;
 import com.shortener.repository.DailyUrlAnalyticsRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -37,6 +38,11 @@ public class ClickEventProcessor {
         this.dailyUrlAnalyticsRepository = dailyUrlAnalyticsRepository;
     }
 
+    /**
+     * Idempotent: events whose event_id is already in click_logs (Kafka redelivery, DLT replay)
+     * are skipped and not counted again in the daily aggregates.
+     */
+    @Transactional
     public void processEvents(List<ClickEvent> events) {
         if (events == null || events.isEmpty()) {
             return;
@@ -61,8 +67,19 @@ public class ClickEventProcessor {
                         .build()
                 ).toList();
 
+        int[] insertCounts = clickLogRepository.batchInsert(clickLogs);
+        List<ClickEvent> newEvents = new ArrayList<>(events.size());
+        for (int i = 0; i < events.size(); i++) {
+            if (i >= insertCounts.length || insertCounts[i] != 0) {
+                newEvents.add(events.get(i));
+            }
+        }
+        if (newEvents.isEmpty()) {
+            return;
+        }
+
         Map<DailyUrlAnalyticsKey, DailyUrlAnalytics> aggregateMap = new HashMap<>();
-        for (ClickEvent event : events) {
+        for (ClickEvent event : newEvents) {
             LocalDate date = event.clickedAt().atZone(ZoneOffset.UTC).toLocalDate();
             DailyUrlAnalyticsKey key = new DailyUrlAnalyticsKey(event.shortCode(), date);
 
@@ -118,10 +135,9 @@ public class ClickEventProcessor {
             }
         }
 
-        clickLogRepository.batchInsert(clickLogs);
         dailyUrlAnalyticsRepository.batchUpsert(new ArrayList<>(aggregateMap.values()));
 
-        for (ClickEvent event : events) {
+        for (ClickEvent event : newEvents) {
             try {
                 String country = event.countryCode();
                 if ("LO".equalsIgnoreCase(country)) {

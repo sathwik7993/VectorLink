@@ -24,7 +24,6 @@ import java.util.logging.Logger;
 public class KafkaRecoveryScheduler {
 
     private static final Logger LOGGER = Logger.getLogger(KafkaRecoveryScheduler.class.getName());
-    private static final String LOG_FILE_PATH = "C:\\Users\\SATHWIK.CH\\Downloads\\projects\\URL shortner\\logs\\dead_letter_clicks.log";
     private static final Object fileLock = new Object();
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -83,12 +82,12 @@ public class KafkaRecoveryScheduler {
     }
 
     private void replayLogFile() {
-        File file = new File(LOG_FILE_PATH);
+        File file = new File(UrlShortenerService.getDeadLetterLogPath());
         if (!file.exists() || file.length() == 0) {
             return;
         }
 
-        LOGGER.info("Replaying click events from local dead-letter log: " + LOG_FILE_PATH);
+        LOGGER.info("Replaying click events from local dead-letter log: " + file.getPath());
         List<String> failedLines = new ArrayList<>();
 
         synchronized (fileLock) {
