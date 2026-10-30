@@ -4,11 +4,11 @@
 # =============================================================================
 
 app:
-  # The Azure stack runs a single-node KRaft Kafka broker (infrastructure/azure/docker-compose.yml).
-  # Set KAFKA_ENABLED=false on hosts without a broker: all Kafka beans/listeners/schedulers are then
-  # disabled and UrlShortenerService.trackClick() writes click events straight to Postgres.
+  # Production (Azure student-plan VM) runs without a Kafka broker to save RAM. With Kafka disabled,
+  # all Kafka beans/listeners/schedulers are off and UrlShortenerService.trackClick() writes click
+  # events straight to Postgres. Set KAFKA_ENABLED=true (plus KAFKA_HOST/KAFKA_PORT) on a host with a broker.
   kafka:
-    enabled: ${KAFKA_ENABLED:true}
+    enabled: ${KAFKA_ENABLED:false}
     dead-letter-log-path: ${DEAD_LETTER_LOG_PATH:/tmp/vectorlink/dead_letter_clicks.log}
   jwt:
     # Required in production; no default, so the app refuses to start without it

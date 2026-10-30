@@ -61,17 +61,20 @@ Add `https://vectorlink.duckdns.org/login/oauth2/code/google` (check your Spring
 
 ## 7. Update an app
 Automatic: every push to `main` that passes CI runs the `deploy-azure` job in `.github/workflows/ci-cd.yml`.
-It SSHes into the VM, pulls, rebuilds `vectorlink` and `kafka`, and waits for `/actuator/health` on the internal management port 9091 to report `UP`.
+It SSHes into the VM, pulls, rebuilds `vectorlink` (removing containers for services no longer in the compose file), and waits for `/actuator/health` on the internal management port 9091 to report `UP`.
 Enable it by adding these repository secrets: `AZURE_VM_HOST` (public IP), `AZURE_VM_USER` (`azureuser`), `AZURE_VM_SSH_KEY` (private key).
 Without them the job is skipped.
 
 Manual:
 ```bash
-cd ~/apps/vectorlink && git pull && cd ~/stack && docker compose up -d --build vectorlink kafka
+cd ~/apps/vectorlink && git pull && cd ~/stack && docker compose up -d --build --remove-orphans vectorlink
 ```
 
 `~/stack/.env` must define `JWT_SECRET` (at least 32 bytes, `openssl rand -base64 48`). The prod profile refuses to start without it.
 
 ## Memory (4 GB VM)
-Postgres 300m + Redis 100m + Kafka 512m + Caddy 60m + VectorLink 600m + ArchSim 650m + OS ≈ 2.7 GB. Swap covers build spikes.
-To run without Kafka, set `KAFKA_ENABLED: "false"` on `vectorlink` and remove the `kafka` service; clicks are then written straight to Postgres.
+Postgres 300m + Redis 100m + Caddy 60m + VectorLink 600m + ArchSim 650m + OS ≈ 2.2 GB. Swap covers build spikes.
+No Kafka broker runs in production (it would add about 512 MB). `vectorlink` uses `KAFKA_ENABLED: "false"`, so clicks are written straight to Postgres.
+Everything else is unchanged: Redis caching, analytics dashboards, live SSE click stream, rate limiting, auth.
+The Kafka pipeline (batch consumer, dead-letter topic, replay) still runs in the local `docker-compose.yml` stack and in CI.
+If an older deploy left a `kafka` container running, `--remove-orphans` (above) removes it.

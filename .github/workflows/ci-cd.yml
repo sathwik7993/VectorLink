@@ -94,7 +94,7 @@ jobs:
           script: |
             set -e
             cd ~/apps/vectorlink && git pull --ff-only
-            cd ~/stack && docker compose up -d --build vectorlink kafka
+            cd ~/stack && docker compose up -d --build --remove-orphans vectorlink
             for i in $(seq 1 30); do
               if docker compose exec -T vectorlink wget -qO- http://localhost:9091/actuator/health | grep -q '"UP"'; then
                 echo "VectorLink is healthy"; exit 0
