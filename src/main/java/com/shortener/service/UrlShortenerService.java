@@ -9,6 +9,7 @@ import com.shortener.exception.ResourceNotFoundException;
 import com.shortener.repository.ShortUrlRepository;
 import com.shortener.repository.UserRepository;
 import com.shortener.entity.User;
+import com.shortener.security.LinkAccessTokenService;
 import com.shortener.util.Base62;
 import com.shortener.util.FeistelCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +20,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -77,6 +79,8 @@ public class UrlShortenerService {
     private final RestTemplate restTemplate;
     private final com.github.benmanes.caffeine.cache.Cache<String, GeoDetails> ipCountryCache;
     private final MeterRegistry meterRegistry;
+    private final PasswordEncoder passwordEncoder;
+    private final LinkAccessTokenService linkAccessTokens;
 
     @Value("${app.kafka.enabled:true}")
     private boolean kafkaEnabled;
@@ -90,6 +94,8 @@ public class UrlShortenerService {
             ClickEventProcessor clickEventProcessor,
             @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager,
             MeterRegistry meterRegistry,
+            PasswordEncoder passwordEncoder,
+            LinkAccessTokenService linkAccessTokens,
             @Value("${app.kafka.dead-letter-log-path:logs/dead_letter_clicks.log}") String deadLetterLogPath) {
         this.idGenerator = idGenerator;
         this.shortUrlRepository = shortUrlRepository;
@@ -99,6 +105,8 @@ public class UrlShortenerService {
         this.clickEventProcessor = clickEventProcessor;
         this.caffeineCacheManager = caffeineCacheManager;
         this.meterRegistry = meterRegistry;
+        this.passwordEncoder = passwordEncoder;
+        this.linkAccessTokens = linkAccessTokens;
         UrlShortenerService.deadLetterLogPath = deadLetterLogPath;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -150,7 +158,7 @@ public class UrlShortenerService {
 
         String passwordHash = null;
         if (request.password() != null && !request.password().isEmpty()) {
-            passwordHash = hashPassword(request.password(), shortCode);
+            passwordHash = passwordEncoder.encode(request.password());
         }
 
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
@@ -364,13 +372,8 @@ public class UrlShortenerService {
 
             // 5. Password protection check
             if (cachedInfo.passwordHash() != null && !cachedInfo.passwordHash().trim().isEmpty()) {
-                boolean authorized = false;
-                if (clientToken != null && clientToken.equals(cachedInfo.passwordHash())) {
-                    authorized = true;
-                }
-                if (!authorized && cookieValue != null && cookieValue.equals(cachedInfo.passwordHash())) {
-                    authorized = true;
-                }
+                boolean authorized = linkAccessTokens.verify(shortCode, cachedInfo.passwordHash(), clientToken)
+                        || linkAccessTokens.verify(shortCode, cachedInfo.passwordHash(), cookieValue);
                 if (!authorized) {
                     throw new com.shortener.exception.PasswordRequiredException(shortCode);
                 }
@@ -449,11 +452,41 @@ public class UrlShortenerService {
     }
 
     /**
+     * Finds a link by short code or custom alias, only if the current user owns it (or is an admin).
+     * Non-owners get the same empty result as for a missing link, so codes cannot be probed.
+     */
+    public Optional<ShortUrl> findOwnedLink(String shortCodeOrAlias) {
+        return shortUrlRepository.findByShortCode(shortCodeOrAlias)
+                .or(() -> shortUrlRepository.findByCustomAlias(shortCodeOrAlias))
+                .filter(this::isOwnedByCurrentUser);
+    }
+
+    private boolean isOwnedByCurrentUser(ShortUrl shortUrl) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+            return false;
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (isAdmin) {
+            return true;
+        }
+        User owner = shortUrl.getUser();
+        if (owner == null) {
+            return false;
+        }
+        return userRepository.findByEmail(authentication.getName())
+                .map(caller -> caller.getId().equals(owner.getId()))
+                .orElse(false);
+    }
+
+    /**
      * Deletes a URL by its short code and evicts it from all caches.
      */
     @Transactional
     public void deleteUrl(String shortCode) {
         ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
+                .filter(this::isOwnedByCurrentUser)
                 .orElseThrow(() -> new ResourceNotFoundException("Short URL not found: " + shortCode));
 
         shortUrlRepository.delete(shortUrl);
@@ -468,6 +501,7 @@ public class UrlShortenerService {
     @Transactional
     public UrlResponse toggleUrlActive(String shortCode) {
         ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
+                .filter(this::isOwnedByCurrentUser)
                 .orElseThrow(() -> new ResourceNotFoundException("Short URL not found: " + shortCode));
 
         shortUrl.setActive(!shortUrl.isActive());
@@ -818,19 +852,32 @@ public class UrlShortenerService {
         if (password == null) {
             return false;
         }
-        String inputHash = hashPassword(password, shortUrl.getShortCode());
-        return shortUrl.getPasswordHash().equals(inputHash);
+        String stored = shortUrl.getPasswordHash();
+        if (stored.startsWith("$2")) {
+            return passwordEncoder.matches(password, stored);
+        }
+        // Legacy SHA-256(password:shortCode) hash from older builds: verify once, then upgrade to BCrypt
+        byte[] legacy = legacySha256(password, shortUrl.getShortCode()).getBytes(StandardCharsets.US_ASCII);
+        if (!MessageDigest.isEqual(legacy, stored.getBytes(StandardCharsets.US_ASCII))) {
+            return false;
+        }
+        shortUrl.setPasswordHash(passwordEncoder.encode(password));
+        shortUrlRepository.save(shortUrl);
+        evictFromCaches(shortUrl.getShortCode(), shortUrl.getCustomAlias());
+        return true;
     }
 
-    public String getPasswordHash(String shortCode) {
+    /**
+     * Issues a short-lived access grant for a password-protected link after a successful verifyPassword.
+     */
+    public String issueAccessToken(String shortCode) {
         ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
                 .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
                 .orElseThrow(() -> new ResourceNotFoundException("Short URL not found"));
-        return shortUrl.getPasswordHash();
+        return linkAccessTokens.issue(shortCode, shortUrl.getPasswordHash());
     }
 
-    public String hashPassword(String password, String salt) {
-        if (password == null) return null;
+    private String legacySha256(String password, String salt) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             String input = password + ":" + salt;

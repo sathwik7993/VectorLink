@@ -3,6 +3,7 @@ package com.shortener.config;
 import com.shortener.security.CustomOAuth2AuthenticationSuccessHandler;
 import com.shortener.security.JwtAuthenticationFilter;
 import com.shortener.security.JwtService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -20,10 +21,13 @@ public class SecurityConfig {
 
     private final JwtService jwtService;
     private final CustomOAuth2AuthenticationSuccessHandler oAuth2SuccessHandler;
+    private final int managementPort;
 
-    public SecurityConfig(JwtService jwtService, CustomOAuth2AuthenticationSuccessHandler oAuth2SuccessHandler) {
+    public SecurityConfig(JwtService jwtService, CustomOAuth2AuthenticationSuccessHandler oAuth2SuccessHandler,
+                          @Value("${management.server.port:-1}") int managementPort) {
         this.jwtService = jwtService;
         this.oAuth2SuccessHandler = oAuth2SuccessHandler;
+        this.managementPort = managementPort;
     }
 
     @Bean
@@ -48,6 +52,9 @@ public class SecurityConfig {
                 })
             )
             .authorizeHttpRequests(auth -> auth
+                // Actuator is reachable only on the internal management port; never on the public port
+                .requestMatchers(request -> managementPort > 0 && request.getLocalPort() == managementPort).permitAll()
+                .requestMatchers("/actuator/**").denyAll()
                 .requestMatchers("/", "/index.html", "/login.html", "/register.html", "/password.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
                 .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login").permitAll()
                 .requestMatchers("/api/v1/urls/verify-password").permitAll()

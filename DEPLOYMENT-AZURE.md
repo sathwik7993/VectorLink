@@ -61,7 +61,7 @@ Add `https://vectorlink.duckdns.org/login/oauth2/code/google` (check your Spring
 
 ## 7. Update an app
 Automatic: every push to `main` that passes CI runs the `deploy-azure` job in `.github/workflows/ci-cd.yml`.
-It SSHes into the VM, pulls, rebuilds `vectorlink` and `kafka`, and waits for `/actuator/health` to report `UP`.
+It SSHes into the VM, pulls, rebuilds `vectorlink` and `kafka`, and waits for `/actuator/health` on the internal management port 9091 to report `UP`.
 Enable it by adding these repository secrets: `AZURE_VM_HOST` (public IP), `AZURE_VM_USER` (`azureuser`), `AZURE_VM_SSH_KEY` (private key).
 Without them the job is skipped.
 

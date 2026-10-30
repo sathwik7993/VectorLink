@@ -108,23 +108,36 @@ public class UrlController {
     @PostMapping("/api/v1/urls/verify-password")
     public ResponseEntity<PasswordVerifyResponse> verifyPassword(
             @RequestBody PasswordVerifyRequest verifyRequest,
+            HttpServletRequest request,
             jakarta.servlet.http.HttpServletResponse response) {
-        
+
         boolean success = urlShortenerService.verifyPassword(verifyRequest.shortCode(), verifyRequest.password());
         if (success) {
-            String hash = urlShortenerService.getPasswordHash(verifyRequest.shortCode());
-            jakarta.servlet.http.Cookie cookie = new jakarta.servlet.http.Cookie("vlink_pass_" + verifyRequest.shortCode(), hash);
+            // Short-lived signed grant, only readable by the server; the stored password hash never leaves it
+            String grant = urlShortenerService.issueAccessToken(verifyRequest.shortCode());
+            jakarta.servlet.http.Cookie cookie = new jakarta.servlet.http.Cookie("vlink_pass_" + verifyRequest.shortCode(), grant);
             cookie.setPath("/");
-            cookie.setMaxAge(3600);
+            cookie.setMaxAge((int) com.shortener.security.LinkAccessTokenService.TTL.getSeconds());
+            cookie.setHttpOnly(true);
+            cookie.setAttribute("SameSite", "Lax");
+            if (request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"))) {
+                cookie.setSecure(true);
+            }
             response.addCookie(cookie);
-            
-            return ResponseEntity.ok(new PasswordVerifyResponse(true, hash));
+
+            return ResponseEntity.ok(new PasswordVerifyResponse(true));
         } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new PasswordVerifyResponse(false, null));
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new PasswordVerifyResponse(false));
         }
     }
 
     private String appendQueryParams(String targetUrl, String queryString) {
+        // Never forward the link-access grant to the destination site
+        if (queryString != null) {
+            queryString = java.util.Arrays.stream(queryString.split("&"))
+                    .filter(param -> !param.equals("token") && !param.startsWith("token="))
+                    .collect(java.util.stream.Collectors.joining("&"));
+        }
         if (queryString == null || queryString.trim().isEmpty()) {
             return targetUrl;
         }
@@ -144,5 +157,5 @@ public class UrlController {
     }
 
     public static record PasswordVerifyRequest(String shortCode, String password) {}
-    public static record PasswordVerifyResponse(boolean success, String token) {}
+    public static record PasswordVerifyResponse(boolean success) {}
 }

@@ -65,8 +65,10 @@ server:
     min-response-size: 1024
   max-http-header-size: 16KB
 
-# Actuator — expose health, info, metrics for platform monitoring
+# Actuator — internal management port only (Caddy proxies 8080, never 9091)
 management:
+  server:
+    port: ${MANAGEMENT_PORT:9091}
   endpoints:
     web:
       exposure:

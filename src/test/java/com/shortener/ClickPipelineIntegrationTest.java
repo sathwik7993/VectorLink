@@ -41,7 +41,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -146,7 +148,114 @@ class ClickPipelineIntegrationTest {
         }
     }
 
+    // ---- authorization and link-password regressions (security audit run-1) ----
+
+    @Test
+    void nonOwnerCannotToggleOrDeleteAnotherUsersLink() throws Exception {
+        Cookie alice = registeredUser("alice-own@example.test");
+        Cookie bob = registeredUser("bob-own@example.test");
+        String code = createShortUrlAs(alice, Map.of("longUrl", "https://alice.example.test/private", "ttlSeconds", 3600));
+
+        mockMvc.perform(patch("/api/v1/urls/" + code + "/toggle").cookie(bob).with(remote(nextIp())))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/urls/" + code).cookie(bob).with(remote(nextIp())))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(patch("/api/v1/urls/" + code + "/toggle").cookie(alice).with(remote(nextIp())))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/urls/" + code).cookie(alice).with(remote(nextIp())))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void nonOwnerCannotReadAnalyticsOrSubscribeToStream() throws Exception {
+        Cookie alice = registeredUser("alice-analytics@example.test");
+        Cookie bob = registeredUser("bob-analytics@example.test");
+        String code = createShortUrlAs(alice, Map.of("longUrl", "https://alice.example.test/stats", "ttlSeconds", 3600));
+
+        for (String suffix : List.of("", "/countries", "/referrers", "/hourly", "/locations", "/stream")) {
+            mockMvc.perform(get("/api/v1/analytics/" + code + suffix).cookie(bob).with(remote(nextIp())))
+                    .andExpect(status().isNotFound());
+        }
+        mockMvc.perform(get("/api/v1/analytics/" + code + "/referrers").cookie(alice).with(remote(nextIp())))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void linkPasswordGrantIsSignedHttpOnlyAndNeverForwarded() throws Exception {
+        Cookie alice = registeredUser("alice-pw@example.test");
+        String code = createShortUrlAs(alice, Map.of("longUrl", "https://dest.example.test/doc?x=1",
+                "password", "link-pw-123", "ttlSeconds", 3600));
+
+        String storedHash = jdbcTemplate.queryForObject(
+                "SELECT password_hash FROM short_urls WHERE short_code = ?", String.class, code);
+        assertThat(storedHash).startsWith("$2"); // BCrypt, not a fast hash
+
+        // The stored hash is not an access credential
+        mockMvc.perform(get("/" + code).param("token", storedHash).with(remote(nextIp())))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "/password.html?code=" + code));
+
+        mockMvc.perform(post("/api/v1/urls/verify-password").with(remote(nextIp()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("shortCode", code, "password", "wrong"))))
+                .andExpect(status().isUnauthorized());
+
+        var verified = mockMvc.perform(post("/api/v1/urls/verify-password").with(remote(nextIp()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("shortCode", code, "password", "link-pw-123"))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse();
+        assertThat(verified.getContentAsString()).doesNotContain(storedHash).doesNotContain("token");
+        Cookie grant = verified.getCookie("vlink_pass_" + code);
+        assertThat(grant).isNotNull();
+        assertThat(grant.isHttpOnly()).isTrue();
+        assertThat(grant.getValue()).isNotEqualTo(storedHash);
+
+        mockMvc.perform(get("/" + code).cookie(grant).with(remote(nextIp())))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://dest.example.test/doc?x=1"));
+
+        // A grant passed as ?token= works but is stripped before the redirect to the destination
+        mockMvc.perform(get("/" + code + "?token=" + grant.getValue() + "&utm_source=share").with(remote(nextIp())))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://dest.example.test/doc?x=1&utm_source=share"));
+    }
+
+    @Test
+    void actuatorIsNotServedOnThePublicPort() throws Exception {
+        for (String path : List.of("/actuator/prometheus", "/actuator/metrics", "/actuator/health")) {
+            int status = mockMvc.perform(get(path).with(remote(nextIp()))).andReturn().getResponse().getStatus();
+            assertThat(status).as(path).isNotEqualTo(200);
+        }
+    }
+
     // ---- helpers ----
+
+    private static final java.util.concurrent.atomic.AtomicInteger IP_COUNTER = new java.util.concurrent.atomic.AtomicInteger(10);
+
+    /** Fresh private client IP per request so tests never share a rate-limit bucket. */
+    private static String nextIp() {
+        int n = IP_COUNTER.incrementAndGet();
+        return "10.1." + (n / 250) + "." + (n % 250 + 1);
+    }
+
+    private Cookie registeredUser(String email) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register").with(remote(nextIp()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", email, "password", "dummy-pass-1"))))
+                .andExpect(status().isCreated());
+        return new Cookie("vlink_jwt", jwtService.generateToken(email, "USER"));
+    }
+
+    private String createShortUrlAs(Cookie user, Map<String, Object> request) throws Exception {
+        String body = mockMvc.perform(post("/api/v1/urls").cookie(user).with(remote(nextIp()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body).get("shortUrl").asText();
+    }
 
     private String createShortUrl(String longUrl) throws Exception {
         Cookie jwt = new Cookie("vlink_jwt", jwtService.generateToken("it@example.com", "USER"));

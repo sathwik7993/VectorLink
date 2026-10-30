@@ -34,6 +34,10 @@ public class AnalyticsController {
 
     @GetMapping(value = "/api/v1/analytics/{shortCode}/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
     public org.springframework.web.servlet.mvc.method.annotation.SseEmitter streamClicks(@PathVariable String shortCode) {
+        // Only the link owner (or an admin) may watch its live clicks; check before registering an emitter
+        if (urlShortenerService.findOwnedLink(shortCode).isEmpty()) {
+            throw new com.shortener.exception.ResourceNotFoundException("Short URL not found: " + shortCode);
+        }
         org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter = new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(30 * 60 * 1000L); // 30 minutes timeout
         java.util.List<org.springframework.web.servlet.mvc.method.annotation.SseEmitter> list = emitters.computeIfAbsent(shortCode, k -> new java.util.concurrent.CopyOnWriteArrayList<>());
         list.add(emitter);
@@ -54,16 +58,16 @@ public class AnalyticsController {
     }
 
     private final DailyUrlAnalyticsRepository dailyUrlAnalyticsRepository;
-    private final com.shortener.repository.ShortUrlRepository shortUrlRepository;
     private final com.shortener.repository.ClickLogRepository clickLogRepository;
+    private final com.shortener.service.UrlShortenerService urlShortenerService;
 
     public AnalyticsController(
             DailyUrlAnalyticsRepository dailyUrlAnalyticsRepository,
-            com.shortener.repository.ShortUrlRepository shortUrlRepository,
-            com.shortener.repository.ClickLogRepository clickLogRepository) {
+            com.shortener.repository.ClickLogRepository clickLogRepository,
+            com.shortener.service.UrlShortenerService urlShortenerService) {
         this.dailyUrlAnalyticsRepository = dailyUrlAnalyticsRepository;
-        this.shortUrlRepository = shortUrlRepository;
         this.clickLogRepository = clickLogRepository;
+        this.urlShortenerService = urlShortenerService;
     }
 
     /**
@@ -71,6 +75,9 @@ public class AnalyticsController {
      */
     @GetMapping("/api/v1/analytics/{shortCode}")
     public ResponseEntity<List<DailyUrlAnalytics>> getUrlAnalytics(@PathVariable String shortCode) {
+        if (urlShortenerService.findOwnedLink(shortCode).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         List<DailyUrlAnalytics> analytics = dailyUrlAnalyticsRepository.findByShortCodeOrderByClickDateAsc(shortCode);
         return ResponseEntity.ok(analytics);
     }
@@ -80,9 +87,7 @@ public class AnalyticsController {
      */
     @GetMapping("/api/v1/analytics/{shortCode}/countries")
     public ResponseEntity<java.util.Map<String, Long>> getCountryAnalytics(@PathVariable String shortCode) {
-        com.shortener.entity.ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
-                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
-                .orElse(null);
+        com.shortener.entity.ShortUrl shortUrl = urlShortenerService.findOwnedLink(shortCode).orElse(null);
 
         if (shortUrl == null) {
             return ResponseEntity.notFound().build();
@@ -109,9 +114,7 @@ public class AnalyticsController {
      */
     @GetMapping("/api/v1/analytics/{shortCode}/referrers")
     public ResponseEntity<java.util.Map<String, Long>> getReferrerAnalytics(@PathVariable String shortCode) {
-        com.shortener.entity.ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
-                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
-                .orElse(null);
+        com.shortener.entity.ShortUrl shortUrl = urlShortenerService.findOwnedLink(shortCode).orElse(null);
 
         if (shortUrl == null) {
             return ResponseEntity.notFound().build();
@@ -132,9 +135,7 @@ public class AnalyticsController {
      */
     @GetMapping("/api/v1/analytics/{shortCode}/hourly")
     public ResponseEntity<java.util.Map<Integer, Long>> getHourlyAnalytics(@PathVariable String shortCode) {
-        com.shortener.entity.ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
-                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
-                .orElse(null);
+        com.shortener.entity.ShortUrl shortUrl = urlShortenerService.findOwnedLink(shortCode).orElse(null);
 
         if (shortUrl == null) {
             return ResponseEntity.notFound().build();
@@ -171,9 +172,7 @@ public class AnalyticsController {
      */
     @GetMapping("/api/v1/analytics/{shortCode}/locations")
     public ResponseEntity<List<GeoLocationDto>> getGeographicAnalytics(@PathVariable String shortCode) {
-        com.shortener.entity.ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
-                .or(() -> shortUrlRepository.findByCustomAlias(shortCode))
-                .orElse(null);
+        com.shortener.entity.ShortUrl shortUrl = urlShortenerService.findOwnedLink(shortCode).orElse(null);
 
         if (shortUrl == null) {
             return ResponseEntity.notFound().build();

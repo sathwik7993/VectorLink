@@ -148,7 +148,7 @@ This document provides a comprehensive list of every feature, page component, st
 
 ## 6. System Observability & Infrastructure
 
-- **Prometheus Scrape Endpoint**: `/actuator/prometheus` (tracks JVM health, redirection latency histograms, cache hit/miss counters, Kafka buffer size).
+- **Prometheus Scrape Endpoint**: `/actuator/prometheus` on the internal management port 9091 (not served on the public port 8080) (tracks JVM health, redirection latency histograms, cache hit/miss counters, Kafka buffer size).
 - **Grafana Visualization**: Provisioned dashboard displaying real-time application health metrics.
 - **Load Test Scripts**: Ready-to-use k6 test scripts (smoke, stress, spike scenarios).
 - **Resilience Buffering**: Clicking redirects logs data asynchronously to Kafka. If Kafka is down, events buffer in memory (or dead-letter logs).

@@ -2,6 +2,8 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+// Actuator lives on the internal management port (9091), not the public app port
+export const METRICS_URL = __ENV.METRICS_URL || BASE_URL.replace(/:8080$/, ':9091');
 
 // The rate limiter keys on X-Forwarded-For, so each simulated client gets its own private IP.
 // 10.x addresses also map to a fixed geo location in the app, so no external geo-IP calls are made.
@@ -40,7 +42,7 @@ export function createShortUrls(count) {
 
 // Reads a counter from the Prometheus endpoint (sum over all label sets).
 export function readCounter(name) {
-  const res = http.get(`${BASE_URL}/actuator/prometheus`);
+  const res = http.get(`${METRICS_URL}/actuator/prometheus`);
   let total = 0;
   for (const line of res.body.split('\n')) {
     if (line.startsWith(name + ' ') || line.startsWith(name + '{')) {

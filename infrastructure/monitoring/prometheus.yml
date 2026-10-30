@@ -6,4 +6,4 @@ scrape_configs:
   - job_name: 'vectorlink-app'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['app:8080']
+      - targets: ['app:9091']   # internal management port

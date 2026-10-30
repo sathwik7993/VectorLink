@@ -79,8 +79,10 @@ logging:
     com.shortener: INFO
     org.springframework.cache: WARN
 
-# 6. Actuator
+# 6. Actuator — served on a separate internal port that is never published or proxied publicly
 management:
+  server:
+    port: ${MANAGEMENT_PORT:9091}
   endpoints:
     web:
       exposure:

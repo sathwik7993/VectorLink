@@ -94,10 +94,10 @@
 
       const data = await response.json();
       
-      if (data.success && data.token) {
+      if (data.success) {
+        // The server has set an HttpOnly access cookie for this link
         showToast('Password verified! Redirecting...', 'success');
-        document.cookie = `vlink_pass_${code}=${encodeURIComponent(data.token)}; path=/; max-age=86400; SameSite=Strict`;
-        
+
         setTimeout(() => {
           window.location.href = `/${code}`;
         }, 800);
