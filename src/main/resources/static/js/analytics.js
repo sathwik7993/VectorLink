@@ -56,6 +56,12 @@
     });
   }
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
   // ─── Toast ───
   function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
@@ -63,7 +69,7 @@
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
       <span class="toast-icon"></span>
-      <span class="toast-message">${message}</span>
+      <span class="toast-message">${escapeHtml(message)}</span>
     `;
     container.appendChild(toast);
     setTimeout(() => {
@@ -835,42 +841,50 @@
       });
     });
 
-    const mapStyle = {
+    // OpenFreeMap: free vector tiles from OpenStreetMap data, no API key or sign-up required.
+    // "Positron" is a clean light basemap that matches the dashboard. If it cannot load,
+    // fall back to plain OpenStreetMap raster tiles so the click bars still render.
+    const primaryStyle = 'https://tiles.openfreemap.org/styles/positron';
+    const fallbackStyle = {
       version: 8,
       sources: {
-        'raster-tiles': {
+        osm: {
           type: 'raster',
-          tiles: [
-            'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
-          ],
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
           tileSize: 256,
-          attribution: '© CARTO'
+          maxzoom: 19,
+          attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
         }
       },
-      layers: [
-        {
-          id: 'simple-tiles',
-          type: 'raster',
-          source: 'raster-tiles',
-          minzoom: 0,
-          maxzoom: 19
-        }
-      ]
+      layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
     };
 
     try {
       mapInstance = new maplibregl.Map({
         container: 'world-map',
-        style: mapStyle,
+        style: primaryStyle,
         center: [0, 20],
         zoom: 1.2,
         pitch: 45,
         bearing: -10,
         maxZoom: 14,
-        minZoom: 1
+        minZoom: 1,
+        attributionControl: { compact: true }
       });
 
-      mapInstance.on('load', () => {
+      let usingFallback = false;
+      let popupHandlersRegistered = false;
+      mapInstance.on('error', (e) => {
+        // Only switch if the primary style itself failed (not an individual tile)
+        if (!usingFallback && !mapInstance.isStyleLoaded() && e && e.error) {
+          usingFallback = true;
+          console.warn('Primary map style failed, using OpenStreetMap fallback:', e.error.message);
+          mapInstance.setStyle(fallbackStyle);
+        }
+      });
+
+      mapInstance.on('style.load', () => {
+        if (mapInstance.getSource('clicks')) return;
         mapInstance.addSource('clicks', {
           type: 'geojson',
           data: geojson
@@ -887,6 +901,10 @@
             'fill-extrusion-opacity': 0.85
           }
         });
+
+        // Layer handlers survive a style switch, so register them only once
+        if (popupHandlersRegistered) return;
+        popupHandlersRegistered = true;
 
         const popup = new maplibregl.Popup({
           closeButton: false,
@@ -909,10 +927,11 @@
           const pct = total > 0 ? ((count / total) * 100).toFixed(1) : '100';
           const formattedTime = new Date(lastClick).toLocaleString();
 
+          // Geo strings come from click data, so escape them before inserting as HTML
           const html = `
-            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #1d1d1f;">${city}, ${region} (${country})</div>
-            <div style="font-size: 11px; color: #515154; margin-bottom: 2px;">Clicks: <strong style="color: #0071E3;">${count}</strong> (${pct}%)</div>
-            <div style="font-size: 10px; color: #86868b;">Last Click: ${formattedTime}</div>
+            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #1d1d1f;">${escapeHtml(city)}, ${escapeHtml(region)} (${escapeHtml(country)})</div>
+            <div style="font-size: 11px; color: #515154; margin-bottom: 2px;">Clicks: <strong style="color: #0071E3;">${escapeHtml(count)}</strong> (${pct}%)</div>
+            <div style="font-size: 10px; color: #86868b;">Last Click: ${escapeHtml(formattedTime)}</div>
           `;
 
           popup.setLngLat(e.lngLat)
